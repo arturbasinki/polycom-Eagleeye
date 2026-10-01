@@ -36,5 +36,16 @@
   "tracker.identity_error": "person numbering error",
   "tracker.no_frames": "no image from the camera - movement paused",
   "tracker.off": "tracking off",
-  "tracker.on": "tracking on"
+  "tracker.on": "tracking on",
+  "vcam.card.no_signal.subtitle": "check the camera connection to the computer",
+  "vcam.card.no_signal.title": "No camera signal",
+  "vcam.card.off.subtitle": "start the EagleEye app from the menu",
+  "vcam.card.off.title": "EagleEye is not running",
+  "vcam.card.privacy.subtitle": "privacy is on",
+  "vcam.card.privacy.title": "Camera paused",
+  "vcam.status.device_error": "device error: {error}",
+  "vcam.status.no_device": "no device - run install.sh",
+  "vcam.status.off": "off",
+  "vcam.status.running": "running",
+  "vcam.status.write_error": "write error: {error}"
 }

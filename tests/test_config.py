@@ -70,5 +70,16 @@ def test_language_defaults_to_auto_and_is_loaded() -> None:
     assert store_with({}).settings["language"] == "auto"
     assert store_with({"language": "pl"}).settings["language"] == "pl"
 
+
+def test_language_setting_reads_config_without_the_store() -> None:
+    from eagleeye.config import language_setting
+    path = Path(tempfile.mkdtemp()) / "config.json"
+    assert language_setting(path) == "auto", "missing file"
+    path.write_text("{not json", encoding="utf-8")
+    assert language_setting(path) == "auto", "unreadable file"
+    path.write_text(json.dumps({"settings": {"language": "pl"}}), encoding="utf-8")
+    assert language_setting(path) == "pl"
+
+
 if __name__ == "__main__":
     run(globals(), "Konfiguracja")

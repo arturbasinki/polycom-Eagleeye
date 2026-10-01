@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from .i18n import msg, t
 from .v4l2 import OutputDevice, V4L2Error, find_device_by_card
 
 log = logging.getLogger("eagleeye")
@@ -31,8 +32,13 @@ OUT_FPS = 30.0
 FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 FONT_BOLD_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
 CARD_BG_RGB = (18, 22, 28)
-PRIVACY_TEXT = ("Kamera wstrzymana", "prywatność włączona")
-NO_SIGNAL_TEXT = ("Brak sygnału z kamery", "sprawdź połączenie kamery z komputerem")
+PRIVACY_CARD = ("vcam.card.privacy.title", "vcam.card.privacy.subtitle")
+NO_SIGNAL_CARD = ("vcam.card.no_signal.title", "vcam.card.no_signal.subtitle")
+
+
+def card_texts(card: tuple[str, str]) -> tuple[str, str]:
+    """Title and subtitle of a slate in the active language."""
+    return t(card[0]), t(card[1])
 
 
 def i420_size(size: tuple[int, int]) -> int:
@@ -139,15 +145,20 @@ class VirtualCamera:
         self._live: bytes | None = None
         self._live_at = -math.inf
         self._privacy = False
-        self._card_privacy = card_i420(*PRIVACY_TEXT, size=self.size)
-        self._card_no_signal = card_i420(*NO_SIGNAL_TEXT, size=self.size)
+        self._card_privacy = self._card_no_signal = b""
+        self.refresh_language()
         self._device = None
         self._retry_at = -math.inf
-        self.status = "wyłączona"
+        self.status = msg("vcam.status.off")
         self.frames_written = 0
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def refresh_language(self) -> None:
+        """Re-render the slates in the active UI language (called when the language changes)."""
+        self._card_privacy = card_i420(*card_texts(PRIVACY_CARD), size=self.size)
+        self._card_no_signal = card_i420(*card_texts(NO_SIGNAL_CARD), size=self.size)
 
     def set_source(self, stream) -> None:
         with self._lock:
@@ -187,14 +198,14 @@ class VirtualCamera:
             try:
                 self._device = self._factory()
             except (OSError, V4L2Error) as exc:
-                self._device, self.status = None, f"błąd urządzenia: {exc}"
+                self._device, self.status = None, msg("vcam.status.device_error", error=str(exc))
             else:
                 if self._device is None:
-                    self.status = "brak urządzenia - uruchom install.sh"
+                    self.status = msg("vcam.status.no_device")
             if self._device is None:
                 self._retry_at = now + self.RETRY_S
                 return
-            self.status = "działa"
+            self.status = msg("vcam.status.running")
         frame = self.current_frame()
         try:
             self._device.write(frame)
@@ -204,7 +215,7 @@ class VirtualCamera:
             self._device.close()
             self._device = None
             self._retry_at = now + self.RETRY_S
-            self.status = f"błąd zapisu: {exc.strerror or exc}"
+            self.status = msg("vcam.status.write_error", error=exc.strerror or str(exc))
 
     def start(self) -> None:
         if self._thread is not None:
@@ -221,7 +232,7 @@ class VirtualCamera:
         if self._device is not None:
             self._device.close()
             self._device = None
-        self.status = "wyłączona"
+        self.status = msg("vcam.status.off")
 
     def _loop(self) -> None:
         period = 1.0 / self.fps

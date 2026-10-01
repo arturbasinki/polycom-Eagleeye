@@ -13,9 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from runner import run  # noqa: E402
 
-from eagleeye.placeholder import OFF_TEXT, Placeholder  # noqa: E402
+from eagleeye import i18n  # noqa: E402
+from eagleeye.placeholder import OFF_CARD, Placeholder  # noqa: E402
 from eagleeye.v4l2 import V4L2Error  # noqa: E402
-from eagleeye.vcam import card_i420  # noqa: E402
+from eagleeye.vcam import card_i420, card_texts  # noqa: E402
 
 
 class FakeDevice:
@@ -30,7 +31,7 @@ class FakeDevice:
         self.closed = True
 
 
-def make(app=False, factory=None):
+def make(app=False, factory=None, language=lambda: "en"):
     state = {"app": app, "devices": []}
 
     def default_factory():
@@ -38,30 +39,30 @@ def make(app=False, factory=None):
         state["devices"].append(dev)
         return dev
     p = Placeholder(device_factory=factory or default_factory, app_running=lambda: state["app"],
-                    size=(64, 36))
+                    size=(64, 36), language=language)
     return p, state
 
 
 def test_writes_off_card_when_app_is_not_running() -> None:
     p, state = make()
-    assert p.tick() == "zapis"
-    assert state["devices"][0].writes == [card_i420(*OFF_TEXT, size=(64, 36))]
+    assert p.tick() == "writing"
+    assert state["devices"][0].writes == [card_i420(*card_texts(OFF_CARD), size=(64, 36))]
 
 
 def test_releases_device_when_app_starts_and_takes_it_back_after() -> None:
     p, state = make()
     p.tick()
     state["app"] = True
-    assert p.tick() == "aplikacja"
+    assert p.tick() == "app"
     assert state["devices"][0].closed                  # urządzenie wolne dla aplikacji
     state["app"] = False
-    assert p.tick() == "zapis"
+    assert p.tick() == "writing"
     assert len(state["devices"]) == 2 and state["devices"][1].writes
 
 
 def test_does_not_open_device_while_app_runs() -> None:
     p, state = make(app=True)
-    assert p.tick() == "aplikacja" and state["devices"] == []
+    assert p.tick() == "app" and state["devices"] == []
 
 
 def test_device_busy_or_missing_is_retried_without_crash() -> None:
@@ -71,9 +72,9 @@ def test_device_busy_or_missing_is_retried_without_crash() -> None:
         calls.append(1)
         raise V4L2Error("S_FMT wyjścia: Invalid argument")   # inny pisarz trzyma urządzenie
     p, _ = make(factory=busy)
-    assert p.tick() == "brak urządzenia" and p.tick() == "brak urządzenia" and len(calls) == 2
+    assert p.tick() == "no_device" and p.tick() == "no_device" and len(calls) == 2
     p, _ = make(factory=lambda: None)
-    assert p.tick() == "brak urządzenia"
+    assert p.tick() == "no_device"
 
 
 def test_write_error_releases_device() -> None:
@@ -82,7 +83,20 @@ def test_write_error_releases_device() -> None:
             raise OSError(5, "I/O error")
     dev = Broken()
     p, _ = make(factory=lambda: dev)
-    assert p.tick() == "błąd zapisu" and dev.closed
+    assert p.tick() == "write_error" and dev.closed
+
+
+def test_card_is_rerendered_when_the_language_changes() -> None:
+    lang = ["en"]
+    p, state = make(language=lambda: lang[0])
+    try:
+        assert p.tick() == "writing"
+        lang[0] = "pl"
+        assert p.tick() == "writing"
+        first, second = state["devices"][0].writes
+        assert first != second
+    finally:
+        i18n.set_language("en")
 
 
 if __name__ == "__main__":

@@ -42,7 +42,7 @@ from eagleeye.v4l2 import (CID_BACKLIGHT_COMP, CID_BRIGHTNESS, CID_CONTRAST,
                            CID_WHITE_BALANCE_AUTO, CID_WHITE_BALANCE_TEMP,
                            CID_ZOOM_ABSOLUTE, ControlDevice,
                            V4L2Error, list_input_devices)
-from eagleeye.vcam import CARD_LABEL, PRIVACY_TEXT, render_card
+from eagleeye.vcam import CARD_LABEL, PRIVACY_CARD, card_texts, render_card
 
 # Paleta - ciemny motyw dobrany pod długą pracę przed kamerą.
 BG = "#0e1116"
@@ -183,7 +183,7 @@ class CameraApp:
         )
         self.preview_badge = self.preview_stack.controls[2].content
         # Ta sama plansza, którą widzą uczestnicy - obiektyw i tak patrzy wtedy w podłogę.
-        self._privacy_card = cv2.imencode(".jpg", render_card(*PRIVACY_TEXT))[1].tobytes()
+        self._privacy_card = cv2.imencode(".jpg", render_card(*card_texts(PRIVACY_CARD)))[1].tobytes()
         self._privacy_shown = False
         self._shown = (None, None)          # (tracker, błąd) ostatnio pokazane w oknie
 
@@ -1085,7 +1085,7 @@ class CameraApp:
             try:
                 # Stan wirtualnej kamery i prywatność aktualizujemy też bez kamery -
                 # plansza i przełącznik muszą działać, gdy urządzenia nie ma.
-                self.vcam_status.value = f"stan: {self.engine.vcam.status}"
+                self.vcam_status.value = f"stan: {render(self.engine.vcam.status)}"
                 self.privacy_sw.value = self.engine.privacy.active
                 if (self.engine.tracker, self.engine.error) != self._shown:
                     self._sync_connection()

@@ -18,13 +18,15 @@ import sys
 import threading
 from typing import Callable
 
+from .config import language_setting
 from .control import instance_running
+from .i18n import set_language
 from .v4l2 import OutputDevice, V4L2Error
-from .vcam import OUT_SIZE, card_i420, open_loopback
+from .vcam import OUT_SIZE, card_i420, card_texts, open_loopback
 
 log = logging.getLogger("eagleeye")
 
-OFF_TEXT = ("EagleEye nie działa", "uruchom aplikację EagleEye z menu")
+OFF_CARD = ("vcam.card.off.title", "vcam.card.off.subtitle")
 WRITE_PERIOD_S = 0.2     # 5 fps wystarczy na nieruchomą planszę
 IDLE_PERIOD_S = 0.5      # co tyle sprawdzamy, czy aplikacja działa / urządzenie jest wolne
 
@@ -32,30 +34,37 @@ IDLE_PERIOD_S = 0.5      # co tyle sprawdzamy, czy aplikacja działa / urządzen
 class Placeholder:
     def __init__(self, device_factory: Callable[[], OutputDevice | None] = open_loopback,
                  app_running: Callable[[], bool] = instance_running,
-                 size: tuple[int, int] = OUT_SIZE) -> None:
+                 size: tuple[int, int] = OUT_SIZE,
+                 language: Callable[[], str] = language_setting) -> None:
         self._factory = device_factory
         self._app_running = app_running
-        self._card = card_i420(*OFF_TEXT, size=size)
+        self._size = size
+        self._language, self._card, self._card_language = language, b"", None
         self._device = None
 
     def tick(self) -> str:
         """Jeden krok: oddaje urządzenie aplikacji albo pisze planszę. Zwraca stan."""
+        wanted = self._language()
+        if wanted != self._card_language:
+            set_language(wanted)
+            self._card = card_i420(*card_texts(OFF_CARD), size=self._size)
+            self._card_language = wanted
         if self._app_running():
             self.release()
-            return "aplikacja"
+            return "app"
         if self._device is None:
             try:
                 self._device = self._factory()
             except (OSError, V4L2Error):
                 self._device = None       # zajęte przez aplikację w trakcie startu albo brak modułu
             if self._device is None:
-                return "brak urządzenia"
+                return "no_device"
         try:
             self._device.write(self._card)
         except OSError:
             self.release()
-            return "błąd zapisu"
-        return "zapis"
+            return "write_error"
+        return "writing"
 
     def release(self) -> None:
         if self._device is not None:
@@ -73,9 +82,9 @@ def main() -> int:
         while not stop.is_set():
             state = placeholder.tick()
             if state != last:
-                log.info("zaślepka: %s", state)
+                log.info("placeholder: %s", state)
                 last = state
-            stop.wait(WRITE_PERIOD_S if state == "zapis" else IDLE_PERIOD_S)
+            stop.wait(WRITE_PERIOD_S if state == "writing" else IDLE_PERIOD_S)
     finally:
         placeholder.release()
     return 0

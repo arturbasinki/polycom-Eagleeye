@@ -17,8 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from runner import run  # noqa: E402
 
-from eagleeye.vcam import (NO_SIGNAL_TEXT, OUT_SIZE, PRIVACY_TEXT, bgr_to_i420,  # noqa: E402
-                            card_i420, i420_size, jpeg_to_i420, render_card)
+from eagleeye.i18n import msg  # noqa: E402
+from eagleeye.vcam import (NO_SIGNAL_CARD, OUT_SIZE, PRIVACY_CARD, bgr_to_i420,  # noqa: E402
+                            card_i420, card_texts, i420_size, jpeg_to_i420, render_card)
 
 from eagleeye.v4l2 import OutputDevice, V4L2Error, card_name  # noqa: E402
 from eagleeye.vcam import VirtualCamera  # noqa: E402
@@ -75,14 +76,14 @@ def test_garbage_jpeg_is_none() -> None:
 
 
 def test_card_renders_text_with_polish_letters() -> None:
-    card = render_card(*PRIVACY_TEXT)
+    card = render_card(*card_texts(PRIVACY_CARD))
     assert card.shape == (H, W, 3)
     assert (card != card[0, 0]).any(axis=2).sum() > 1000, "brak pikseli tekstu"
 
 
 def test_privacy_and_no_signal_cards_differ() -> None:
-    assert card_i420(*PRIVACY_TEXT) != card_i420(*NO_SIGNAL_TEXT)
-    assert len(card_i420(*PRIVACY_TEXT)) == i420_size(OUT_SIZE)
+    assert card_i420(*card_texts(PRIVACY_CARD)) != card_i420(*card_texts(NO_SIGNAL_CARD))
+    assert len(card_i420(*card_texts(PRIVACY_CARD))) == i420_size(OUT_SIZE)
 
 
 class FakeDevice:
@@ -135,7 +136,7 @@ def test_privacy_sends_privacy_card() -> None:
     vc, dev, _ = rig()
     vc.set_privacy(True)
     vc.tick()
-    assert dev.frames == [card_i420(*PRIVACY_TEXT)] and vc.status == "działa"
+    assert dev.frames == [card_i420(*card_texts(PRIVACY_CARD))] and vc.status == msg("vcam.status.running")
 
 
 def test_live_frame_is_converted_and_repeated() -> None:
@@ -159,13 +160,13 @@ def test_stale_source_switches_to_no_signal() -> None:
     vc.tick()
     clock.t += 1.5
     vc.tick()
-    assert dev.frames[-1] == card_i420(*NO_SIGNAL_TEXT)
+    assert dev.frames[-1] == card_i420(*card_texts(NO_SIGNAL_CARD))
 
 
 def test_no_source_sends_no_signal() -> None:
     vc, dev, _ = rig()
     vc.tick()
-    assert dev.frames == [card_i420(*NO_SIGNAL_TEXT)]
+    assert dev.frames == [card_i420(*card_texts(NO_SIGNAL_CARD))]
 
 
 def test_missing_device_reports_status_and_retries_later() -> None:
@@ -177,7 +178,7 @@ def test_missing_device_reports_status_and_retries_later() -> None:
     vc, _, clock = rig(factory=factory)
     vc.tick()
     vc.tick()
-    assert len(calls) == 1 and "install.sh" in vc.status
+    assert len(calls) == 1 and vc.status == msg("vcam.status.no_device")
     clock.t += VirtualCamera.RETRY_S + 0.1
     vc.tick()
     assert len(calls) == 2
@@ -187,7 +188,7 @@ def test_write_error_closes_and_retries() -> None:
     bad = FakeDevice(fail=True)
     vc, _, _ = rig(device=bad)
     vc.tick()
-    assert bad.closed and vc.status.startswith("błąd zapisu")
+    assert bad.closed and vc.status.key == "vcam.status.write_error"
 
 
 def test_thread_writes_at_steady_rate() -> None:
@@ -197,7 +198,42 @@ def test_thread_writes_at_steady_rate() -> None:
     time.sleep(1.0)
     vc.stop()
     assert 25 <= len(dev.frames) <= 35, len(dev.frames)
-    assert vc.status == "wyłączona"
+    assert vc.status == msg("vcam.status.off")
+
+
+def test_slates_fit_the_card_in_every_language() -> None:
+    from PIL import ImageFont
+
+    from eagleeye import i18n
+    from eagleeye.placeholder import OFF_CARD
+    from eagleeye.vcam import (FONT_BOLD_PATH, FONT_PATH, NO_SIGNAL_CARD, OUT_SIZE,
+                               PRIVACY_CARD)
+    w, h = OUT_SIZE
+    title_font = ImageFont.truetype(str(FONT_BOLD_PATH), h // 12)
+    subtitle_font = ImageFont.truetype(str(FONT_PATH), h // 28)
+    try:
+        for language in i18n.available_languages():
+            i18n.set_language(language)
+            for card in (PRIVACY_CARD, NO_SIGNAL_CARD, OFF_CARD):
+                title, subtitle = card_texts(card)
+                assert title_font.getlength(title) <= 0.9 * w, (language, title)
+                assert subtitle_font.getlength(subtitle) <= 0.9 * w, (language, subtitle)
+    finally:
+        i18n.set_language("en")
+
+
+def test_refresh_language_rerenders_the_cards() -> None:
+    from eagleeye import i18n
+    vc = VirtualCamera(device_factory=lambda: None, size=(320, 180))
+    try:
+        i18n.set_language("en")
+        vc.refresh_language()
+        english = vc._card_privacy
+        i18n.set_language("pl")
+        vc.refresh_language()
+        assert vc._card_privacy != english
+    finally:
+        i18n.set_language("en")
 
 
 def test_output_device_rejects_non_video_node() -> None:

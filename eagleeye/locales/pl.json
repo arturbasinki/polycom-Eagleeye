@@ -36,5 +36,16 @@
   "tracker.identity_error": "błąd numeracji osób",
   "tracker.no_frames": "brak obrazu z kamery - ruch wstrzymany",
   "tracker.off": "śledzenie wyłączone",
-  "tracker.on": "śledzenie włączone"
+  "tracker.on": "śledzenie włączone",
+  "vcam.card.no_signal.subtitle": "sprawdź połączenie kamery z komputerem",
+  "vcam.card.no_signal.title": "Brak sygnału z kamery",
+  "vcam.card.off.subtitle": "uruchom aplikację EagleEye z menu",
+  "vcam.card.off.title": "EagleEye nie działa",
+  "vcam.card.privacy.subtitle": "prywatność włączona",
+  "vcam.card.privacy.title": "Kamera wstrzymana",
+  "vcam.status.device_error": "błąd urządzenia: {error}",
+  "vcam.status.no_device": "brak urządzenia - uruchom install.sh",
+  "vcam.status.off": "wyłączona",
+  "vcam.status.running": "działa",
+  "vcam.status.write_error": "błąd zapisu: {error}"
 }

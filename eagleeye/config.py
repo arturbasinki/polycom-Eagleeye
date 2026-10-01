@@ -123,6 +123,16 @@ class Store:
         return next((p for p in self.presets if p.name == name), None)
 
 
+def language_setting(path: Path = CONFIG_PATH) -> str:
+    """The saved ``settings.language`` (``"auto"`` when missing); standard library only,
+    so the placeholder service can read it without building a ``Store``."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return str((data.get("settings") or {}).get("language", "auto"))
+    except (OSError, ValueError, AttributeError):
+        return "auto"
+
+
 def captures_dir() -> Path:
     CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
     return CAPTURES_DIR

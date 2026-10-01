@@ -20,6 +20,7 @@ from runner import run  # noqa: E402
 
 from eagleeye.config import Store  # noqa: E402
 from eagleeye.engine import Engine, UiHooks  # noqa: E402
+from eagleeye.i18n import msg  # noqa: E402
 from eagleeye.tracker import Tracker  # noqa: E402
 from eagleeye.v4l2 import CID_TILT_ABSOLUTE  # noqa: E402
 
@@ -36,7 +37,7 @@ class FakeVcam:
     def __init__(self) -> None:
         self.source = None
         self.privacy = False
-        self.status = "działa"
+        self.status = msg("vcam.status.running")
         self.running = False
 
     def set_source(self, stream) -> None:
