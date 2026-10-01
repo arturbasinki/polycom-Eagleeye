@@ -23,6 +23,12 @@ and follows you around. EagleEye Control adds both:
 
 > The UI is available in English and Polish (automatic from your system language, switchable in the app); the command-line verbs are English.
 
+<p align="center">
+  <img src="assets/screenshot.png" width="900"
+       alt="The EagleEye Control window in privacy mode: the preview shows the card call participants see, next to the PTZ, optics and image controls">
+</p>
+<p align="center"><em>The app in privacy mode: the preview shows the same card the call participants see.</em></p>
+
 ---
 
 ## How it works

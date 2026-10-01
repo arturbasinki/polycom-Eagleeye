@@ -21,6 +21,12 @@ jednym skrótem oraz **wybór osoby kliknięciem**, gdy w kadrze jest ich kilka.
 
 > Interfejs jest dostępny po angielsku i polsku (automatycznie z języka systemu, przełączany w aplikacji); polecenia wiersza poleceń są po angielsku.
 
+<p align="center">
+  <img src="assets/screenshot.png" width="900"
+       alt="Okno EagleEye Control w trybie prywatności: podgląd pokazuje planszę widoczną dla uczestników rozmowy, obok sterowanie głowicą, optyką i obrazem">
+</p>
+<p align="center"><em>Aplikacja w trybie prywatności: podgląd pokazuje tę samą planszę, którą widzą uczestnicy rozmowy.</em></p>
+
 ---
 
 ## Schemat działania
