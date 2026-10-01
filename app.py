@@ -33,7 +33,7 @@ from eagleeye.engine import Engine, UiHooks
 from eagleeye.framing import SHOTS
 from eagleeye.i18n import available_languages, msg, render, t
 from eagleeye import lightfix
-from eagleeye.lightfix import correct_jpeg, status_message
+from eagleeye.lightfix import status_message
 from eagleeye.overlay import Shape, frame_point, overlay_shapes, selection_text
 from eagleeye.profiles import PROFILES, TUNABLE, resolve
 from eagleeye.trayproc import TrayProcess
@@ -44,7 +44,7 @@ from eagleeye.v4l2 import (CID_BACKLIGHT_COMP, CID_BRIGHTNESS, CID_CONTRAST,
                            CID_WHITE_BALANCE_AUTO, CID_WHITE_BALANCE_TEMP,
                            CID_ZOOM_ABSOLUTE, ControlDevice,
                            V4L2Error, list_input_devices)
-from eagleeye.vcam import CARD_LABEL, PRIVACY_CARD, card_texts, render_card
+from eagleeye.vcam import CARD_LABEL, PRIVACY_CARD, card_texts, i420_to_jpeg, render_card
 
 # Palette - a dark theme chosen for long work in front of the camera.
 BG = "#0e1116"
@@ -62,9 +62,6 @@ SLIDER_WIDTH = 220
 OPTICS_STEP_ZOOM = 600      # zoom step of the buttons (~1.3x)
 OPTICS_STEP_FOCUS = 150
 PREVIEW_BADGE_PERIOD = 1.0  # s - an fps caption every frame is a second Flet message per frame
-# Correcting a preview frame costs a decode, a table lookup and an encode (tools/measure_light_preview.py,
-# gate 8 ms per frame). Over the gate: the preview stays raw and only the badge shows the correction.
-PREVIEW_CORRECTION = False
 
 log = logging.getLogger("eagleeye")
 
@@ -1108,9 +1105,12 @@ class CameraApp:
             self._last_jpg = jpg
 
             shown = jpg
-            lut = self.engine.light_lut
-            if lut is not None and PREVIEW_CORRECTION:
-                shown = await asyncio.to_thread(correct_jpeg, jpg, lut) or jpg
+            if self.engine.light_active:
+                # What the virtual camera outputs, already corrected there (same size as the "Resolution"
+                # setting): one JPEG encode instead of decoding and correcting the camera frame again.
+                live = self.engine.vcam.live_frame()
+                if live is not None:
+                    shown = await asyncio.to_thread(i420_to_jpeg, live, self.engine.vcam.size) or jpg
             self.preview.src = shown
             self.preview.visible = True
             self.preview_placeholder.visible = False

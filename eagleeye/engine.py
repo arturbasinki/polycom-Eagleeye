@@ -245,10 +245,6 @@ class Engine:
     def light_active(self) -> bool:
         return self._light_lut is not None
 
-    @property
-    def light_lut(self) -> np.ndarray | None:
-        return self._light_lut
-
     def correct_light(self) -> LightResult:
         """Measure the face in the latest raw camera frame and apply the resulting table.
 

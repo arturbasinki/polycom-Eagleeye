@@ -19,7 +19,7 @@ from runner import run  # noqa: E402
 
 from eagleeye.i18n import msg  # noqa: E402
 from eagleeye.vcam import (NO_SIGNAL_CARD, OUT_SIZE, PRIVACY_CARD, bgr_to_i420,  # noqa: E402
-                            card_i420, card_texts, i420_size, jpeg_to_i420, render_card)
+                            card_i420, card_texts, i420_size, i420_to_jpeg, jpeg_to_i420, render_card)
 
 from eagleeye.v4l2 import OutputDevice, V4L2Error, card_name  # noqa: E402
 from eagleeye.vcam import VirtualCamera  # noqa: E402
@@ -282,6 +282,62 @@ def test_virtual_camera_applies_the_tone_table_but_never_to_slates() -> None:
     clock.t += 0.033
     vc.tick()
     assert abs(planes(dev.frames[-1])[0].mean() - plain) < 1
+
+
+def test_i420_to_jpeg_keeps_the_colours() -> None:
+    bgr = np.zeros((720, 1280, 3), np.uint8)
+    bgr[:] = (90, 140, 200)
+    jpg = i420_to_jpeg(bgr_to_i420(bgr))
+    assert jpg is not None
+    back = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+    assert back.shape == bgr.shape
+    assert np.abs(back.astype(int) - bgr.astype(int)).max() <= 6
+
+
+def test_i420_to_jpeg_rejects_data_of_the_wrong_size() -> None:
+    assert i420_to_jpeg(b"abc") is None
+
+
+def test_live_frame_is_the_corrected_frame_and_goes_stale() -> None:
+    vc, dev, clock = rig()
+    src = FakeSource()
+    src.push(60)
+    vc.set_source(src)
+    assert vc.live_frame() is None                         # nothing converted yet
+    vc.tick()
+    plain = vc.live_frame()
+    assert plain is not None and len(plain) == i420_size(OUT_SIZE)
+    vc.set_tone(_gamma_table(0.5))
+    clock.t += 0.033
+    vc.tick()
+    corrected = vc.live_frame()
+    assert planes(corrected)[0].mean() > planes(plain)[0].mean() + 20
+    clock.t += 2.0
+    assert vc.live_frame() is None                         # no new camera frame: the preview falls back to raw
+
+
+def test_output_size_follows_the_source_and_reopens_the_device() -> None:
+    dev = FakeDevice()
+    clock = Clock()
+    opened: list[tuple[int, int]] = []
+    vc = VirtualCamera(device_factory=lambda: (opened.append(vc.size), dev)[1], clock=clock)
+    big = FakeSource()
+    big.push(120)
+    big.actual_width, big.actual_height = 1920, 1080
+    vc.set_source(big)
+    vc.tick()
+    assert vc.size == (1920, 1080) and opened == [(1920, 1080)]
+    assert len(dev.frames[-1]) == i420_size((1920, 1080))
+    small = FakeSource()
+    small.push(120)
+    small.actual_width, small.actual_height = 640, 360
+    vc.set_source(small)
+    vc.tick()
+    assert vc.size == (640, 360) and opened[-1] == (640, 360) and dev.closed
+    assert len(dev.frames[-1]) == i420_size((640, 360))
+    vc.set_privacy(True)
+    vc.tick()
+    assert len(dev.frames[-1]) == i420_size((640, 360))            # the slates follow the size too
 
 
 if __name__ == "__main__":

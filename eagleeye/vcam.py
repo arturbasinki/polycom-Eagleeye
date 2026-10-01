@@ -90,6 +90,25 @@ def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE,
     return b"".join((y.tobytes(), u.tobytes(), v.tobytes()))
 
 
+def i420_to_jpeg(data: bytes, size: tuple[int, int] = OUT_SIZE, quality: int = 85) -> bytes | None:
+    """The virtual camera's I420 frame as a JPEG - for the in-app preview while a light correction
+    is active. The frame was already decoded and corrected for the output, so showing it costs one
+    encode (~3.5 ms at 1280x720) instead of decode + table + encode of the camera frame (~32 ms at
+    1080p, measured). Full-range planes, as written by :func:`bgr_to_i420` and :func:`jpeg_to_i420`."""
+    w, h = size
+    if len(data) != i420_size(size):
+        return None
+    a = np.frombuffer(data, np.uint8)
+    y = a[:w * h].reshape(h, w)
+    u = a[w * h:w * h * 5 // 4].reshape(h // 2, w // 2)
+    v = a[w * h * 5 // 4:].reshape(h // 2, w // 2)
+    ycc = cv2.merge((y, cv2.resize(v, (w, h), interpolation=cv2.INTER_LINEAR),     # JFIF order: Y, Cr, Cb
+                     cv2.resize(u, (w, h), interpolation=cv2.INTER_LINEAR)))
+    ok, encoded = cv2.imencode(".jpg", cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR),
+                               [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return encoded.tobytes() if ok else None
+
+
 def _font(path: Path, px: int):
     try:
         return ImageFont.truetype(str(path), px)
@@ -137,11 +156,12 @@ class VirtualCamera:
     RETRY_S = 1.0         # also taking the device over from the placeholder at startup
     STALE_S = 1.0
 
-    def __init__(self, device_factory: Callable[[], OutputDevice | None] = open_loopback,
+    def __init__(self, device_factory: Callable[[], OutputDevice | None] | None = None,
                  size: tuple[int, int] = OUT_SIZE, fps: float = OUT_FPS,
                  clock: Callable[[], float] = time.monotonic) -> None:
-        self._factory = device_factory
+        self._factory = device_factory or (lambda: open_loopback(CARD_LABEL, self.size))
         self.size = (int(size[0]), int(size[1]))
+        self._resize_pending = False
         self.fps = fps
         self._clock = clock
         self._source = None
@@ -166,10 +186,21 @@ class VirtualCamera:
         self._card_no_signal = card_i420(*card_texts(NO_SIGNAL_CARD), size=self.size)
 
     def set_source(self, stream) -> None:
+        """Connect the camera stream. The output follows the stream's size (the "Resolution" setting):
+        a different size re-renders the slates and reopens the output device at that size."""
+        width = getattr(stream, "actual_width", 0) or 0
+        height = getattr(stream, "actual_height", 0) or 0
+        new_size = (width - width % 2, height - height % 2)      # I420 needs even dimensions
         with self._lock:
             self._source = stream
             self._last_id = 0
             self._live = None
+            changed = min(new_size) > 0 and new_size != self.size
+            if changed:
+                self.size = new_size
+                self._resize_pending = True
+        if changed:
+            self.refresh_language()
 
     def set_privacy(self, on: bool) -> None:
         self._privacy = bool(on)
@@ -184,6 +215,14 @@ class VirtualCamera:
         with self._lock:
             self._tone = None if lut is None else np.ascontiguousarray(lut, dtype=np.uint8)
             self._last_id = 0
+
+    def live_frame(self) -> bytes | None:
+        """The latest converted camera frame (I420, light-correction table applied), or None when
+        there is none or it is stale. The in-app preview shows this while a correction is active."""
+        with self._lock:
+            if self._live is None or self._clock() - self._live_at > self.STALE_S:
+                return None
+            return self._live
 
     def current_frame(self) -> bytes:
         if self._privacy:
@@ -204,6 +243,11 @@ class VirtualCamera:
     def tick(self) -> None:
         """One write: opens the device if needed and sends the current frame."""
         now = self._clock()
+        if self._resize_pending:
+            self._resize_pending = False
+            if self._device is not None:
+                self._device.close()
+                self._device = None
         if self._device is None:
             if now < self._retry_at:
                 return

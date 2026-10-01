@@ -224,8 +224,9 @@ For another unit, `tools/measure_dynamics.py`, `tools/measure_zoom.py` and
 - **Image**: brightness, contrast, saturation, hue, gamma, sharpness, white balance (auto or
   2500–8000 K), backlight compensation.
 - **Light correction**: one click measures the face of the person in the frame and applies a tone
-  curve computed for that scene to the virtual camera, until "restore defaults". Computed once,
-  no per-frame analysis; not kept across restarts.
+  curve computed for that scene to the virtual camera and the preview, until "restore defaults".
+  Computed once, no per-frame analysis; not kept across restarts. The virtual camera output uses
+  the size chosen in "Resolution".
 - **Presets**: complete camera poses (pan, tilt, zoom, focus), stored in `config.json`.
 - **Language**: English and Polish interface, picked up automatically from the system
   language and switchable in the app.

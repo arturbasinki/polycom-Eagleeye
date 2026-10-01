@@ -223,8 +223,9 @@ autofocusa i regulacją ręczną.
 (auto lub temperatura 2500–8000 K), kompensacja podświetlenia.
 
 **Korekta światła** — jedno kliknięcie mierzy twarz osoby w kadrze i nakłada na wirtualną
-kamerę krzywą tonalną policzoną dla tej sceny, do „przywróć domyślne".
+kamerę i podgląd krzywą tonalną policzoną dla tej sceny, do „przywróć domyślne".
 Liczona jednorazowo, bez analizy każdej klatki; nie zapisuje się między uruchomieniami.
+Wyjście kamery wirtualnej ma rozmiar wybrany w „Rozdzielczości".
 
 **Presety** — zapis i odczyt kompletnych pozycji kamery (pan, tilt, zoom, ostrość),
 trzymane w `config.json`.

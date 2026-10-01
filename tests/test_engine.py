@@ -448,7 +448,7 @@ def test_correct_light_sets_the_tone_table_on_the_virtual_camera() -> None:
     try:
         result = engine.correct_light()
         assert result.status == "ok" and engine.light_active
-        assert np.array_equal(engine.vcam.tone, result.lut) and engine.light_lut is not None
+        assert np.array_equal(engine.vcam.tone, result.lut)
     finally:
         engine.shutdown()
 
@@ -489,7 +489,7 @@ def test_reset_light_clears_the_table() -> None:
     try:
         engine.correct_light()
         engine.reset_light()
-        assert not engine.light_active and engine.vcam.tone is None and engine.light_lut is None
+        assert not engine.light_active and engine.vcam.tone is None
     finally:
         engine.shutdown()
 
