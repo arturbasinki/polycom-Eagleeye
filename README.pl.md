@@ -19,6 +19,8 @@ Najważniejsze: kadrowanie głowy jak spokojny operator (złoty podział, bez dr
 **wirtualna kamera** „EagleEye” dla Meet/Teams/Zoom/OBS, **tryb prywatności** pod
 jednym skrótem oraz **wybór osoby kliknięciem**, gdy w kadrze jest ich kilka.
 
+> Interfejs jest dostępny po angielsku i polsku (automatycznie z języka systemu, przełączany w aplikacji); polecenia wiersza poleceń są po angielsku.
+
 ---
 
 ## Schemat działania
@@ -81,7 +83,7 @@ stateDiagram-v2
 
 Każda osoba dostaje numer (`eagleeye/identity.py`: ścieżki w kątach świata plus histogram
 koloru tułowia, więc numery trzymają się przy skrzyżowaniach i po krótkim zniknięciu).
-Kliknij osobę w podglądzie albo użyj `eagleeye wybierz X,Y`.
+Kliknij osobę w podglądzie albo użyj `eagleeye select X,Y`.
 
 ```mermaid
 stateDiagram-v2
@@ -137,12 +139,12 @@ bez wykonywania):
 3. tworzy środowisko Pythona (z CUDA, gdy jest karta NVIDIA),
 4. pobiera model pozy RTMO-s,
 5. dodaje „EagleEye” do menu i polecenie `eagleeye` (`~/.local/bin`),
-6. włącza usługę `eagleeye-zaslepka` (systemd `--user`, od zalogowania): gdy aplikacja
+6. włącza usługę `eagleeye-placeholder` (systemd `--user`, od zalogowania): gdy aplikacja
    nie działa, wirtualna kamera pokazuje planszę „EagleEye nie działa” — dzięki temu
    Chrome zawsze ma „EagleEye” na liście kamer, niezależnie od kolejności uruchamiania,
 7. przypisuje skrót **Super+Shift+C** do trybu prywatności.
 
-Odinstalowanie: `./uninstall.sh` (`--wszystko` usuwa też venv i moduł).
+Odinstalowanie: `./uninstall.sh` (`--all` usuwa też venv i moduł).
 
 ## Uruchamianie
 
@@ -156,13 +158,14 @@ Podgląd w Meet jest dla Ciebie lustrzany; uczestnicy widzą obraz prawidłowo, 
 | Polecenie | Działanie |
 |---|---|
 | `eagleeye` | uruchom albo pokaż okno działającej aplikacji |
-| `eagleeye prywatnosc [wl\|wyl]` | prywatność: plansza dla uczestników, obiektyw w dół (Super+Shift+C) |
-| `eagleeye sledzenie [wl\|wyl]` | auto-tracking |
-| `eagleeye profil rozmowa` | profil śledzenia |
-| `eagleeye autozoom [wl\|wyl]` | zoom automatyczny (bez argumentu: przełącz) |
-| `eagleeye wybierz X,Y\|brak` | śledź osobę w punkcie klatki albo wróć do trybu automatycznego (`eagleeye stan` → `wybor`: osoby i rozmiar klatki) |
-| `eagleeye stan` | stan w JSON (z wydajnością śledzenia: Hz, detekcja, wiek klatki, ruchy) |
-| `eagleeye zakoncz` | zamknij aplikację |
+| `eagleeye privacy [on\|off]` | prywatność: plansza dla uczestników, obiektyw w dół (Super+Shift+C) |
+| `eagleeye tracking [on\|off]` | auto-tracking |
+| `eagleeye profile talk` | profil śledzenia |
+| `eagleeye autozoom [on\|off]` | zoom automatyczny (bez argumentu: przełącz) |
+| `eagleeye select X,Y\|none` | śledź osobę w punkcie klatki albo wróć do trybu automatycznego (`eagleeye state` → `selection`: osoby i rozmiar klatki) |
+| `eagleeye state` | stan w JSON (z wydajnością śledzenia: Hz, detekcja, wiek klatki, ruchy) |
+| `eagleeye language [auto\|en\|pl]` | język interfejsu |
+| `eagleeye quit` | zamknij aplikację |
 
 Tryb deweloperski bez instalacji: `.venv/bin/python -m eagleeye.cli`.
 
@@ -183,9 +186,12 @@ autofocusa i regulacją ręczną.
 **Presety** — zapis i odczyt kompletnych pozycji kamery (pan, tilt, zoom, ostrość),
 trzymane w `config.json`.
 
+**Język** — interfejs po angielsku i polsku; wybierany automatycznie z języka systemu,
+przełączany w aplikacji.
+
 **Auto-tracking** — kamera kadruje na głowę jak spokojny operator. Dwa profile:
 
-| | rozmowa | prezentacja |
+| | talk (rozmowa) | presentation (prezentacja) |
 |---|---|---|
 | cel | spokój: rzadkie, płynne ruchy | nadążanie za idącą osobą |
 | stan | gotowy | **eksperymentalny** — patrz niżej |
@@ -206,7 +212,7 @@ punktu; po przesunięciu się kamera cicho poprawia kadr po 3 s.
 **Zoom automatyczny** dobiera przybliżenie do planu profilu (wielkość odcinka oczy→barki)
 i rusza dopiero przy trwałej zmianie odległości (≥ 20%, 2 s, cel stabilny). Ręczna zmiana
 zoomu (suwak, przyciski, preset, pilot) wyłącza automat na stałe — włącza go przełącznik
-w panelu śledzenia albo `eagleeye autozoom wl`.
+w panelu śledzenia albo `eagleeye autozoom on`.
 
 **Sterowanie ruchem.** Ruch absolutny głowicy trafia jednym rozkazem tylko w cel, który
 stoi, więc reżyser rusza, gdy osoba osiądzie (prędkość < 2°/s) — chyba że za chwilę
@@ -219,7 +225,7 @@ miejsca, w którym ostatnio ją widziała). Przycisk „ustaw dom” zapamiętuj
 pozycję, do której kamera wraca, gdy nikogo nie ma. Wartości w sekcji
 „zaawansowane” (strefy, zwłoka) nadpisują profil.
 
-**Dlaczego „prezentacja” jest eksperymentalna.** Głowica jeździ w trybie ciągłym
+**Dlaczego profil „presentation” jest eksperymentalny.** Głowica jeździ w trybie ciągłym
 z jedną stałą prędkością (~40°/s), a chód to ~20°/s — kamera może dogonić i stanąć
 albo czekać, ale nie pojedzie równo z idącą osobą. Wąska strefa daje ruszenie co
 ~2 s, szeroka — kamerę, która prawie nie reaguje. Płynne nadążanie wymaga
@@ -268,7 +274,7 @@ plus histogram koloru tułowia, więc numery trzymają się przy skrzyżowaniach
 zniknięciu. Wybrana osoba, która zniknie, jest „zawieszona”: kamera stoi na jej ostatnim
 miejscu i czeka do `select_hold_s` (domyślnie 6 s, suwak „czekanie na wybraną”), po czym
 wraca do największej osoby. Obcy człowiek nie przejmuje celu przed upływem tego czasu.
-Przycisk „śledź automatycznie” (albo `eagleeye wybierz brak`) czyści wybór.
+Przycisk „śledź automatycznie” (albo `eagleeye select none`) czyści wybór.
 
 Kalibracja tego egzemplarza (dynamika pan, tilt i zoomu) jest wpisana w kod jako wartości
 domyślne `Dynamics` w `eagleeye/head_model.py` — nie zależy od `config.json`. Inny
@@ -284,10 +290,12 @@ app.py                 okno Flet = widok silnika; zamknięcie chowa do zasobnika
 └── eagleeye/
     ├── engine.py      silnik: kamera, śledzenie, wirtualna kamera, prywatność - niezależny od okna
     ├── vcam.py        wirtualna kamera "EagleEye": I420, plansze, wątek zapisu w stałym tempie
-    ├── placeholder.py zaślepka (usługa eagleeye-zaslepka): plansza, gdy aplikacja nie działa
+    ├── placeholder.py zaślepka (usługa eagleeye-placeholder): plansza, gdy aplikacja nie działa
     ├── privacy.py     tryb prywatności: plansza, obiektyw w dół, powrót do stanu sprzed
     ├── control.py     gniazdo UNIX: polecenia JSON w jedną linię, blokada jednej instancji
     ├── cli.py         polecenie `eagleeye`: start albo sterowanie działającą aplikacją
+    ├── i18n.py        tłumaczenia: `t()`, katalogi komunikatów, wykrywanie języka
+    ├── locales/       katalogi interfejsu (`en.json`, `pl.json`)
     ├── trayproc.py    ikona w zasobniku jako proces potomny (systemowy python3)
     ├── v4l2.py        sprzęt: strumień MJPEG (mmap, czas klatki), kontrolki (ioctl), wyjście loopback
     ├── detectors.py   detekcja: model pozy RTMO-s (ONNX Runtime CUDA/CPU), dekodowanie MJPEG
@@ -382,7 +390,7 @@ jest przywracana na końcu.
 
 **Meet nie widzi kamery „EagleEye”** — Chrome widzi urządzenie v4l2loopback tylko wtedy,
 gdy ktoś do niego pisze, a listę kamer buduje przy starcie (zdarzenia udev jej nie
-odświeżają). Pisze aplikacja albo zaślepka: `systemctl --user status eagleeye-zaslepka`
+odświeżają). Pisze aplikacja albo zaślepka: `systemctl --user status eagleeye-placeholder`
 ma pokazać `active`, a `cat /sys/class/video4linux/video10/state` — `capture`. Jeśli
 zaślepka nie działała, gdy Chrome startował: `chrome://restart`. Nie zmieniaj
 `exclusive_caps` na 0 — Chrome pomija urządzenia z jednocześnie wejściem i wyjściem.
@@ -394,7 +402,7 @@ uruchomić `./install.sh` (albo zrestartować komputer, jeśli instalator o tym 
 
 **Śledzenie dojeżdża „na raty” przy zoomie** — przeliczenie piksel → kąt korzysta ze
 zmierzonej krzywej zoomu (`eagleeye/geometry.py`, `ZOOM_CURVE`). Inny egzemplarz kamery
-może mieć inną krzywą; `eagleeye stan` pokazuje liczbę ruchów, a zapis sesji
+może mieć inną krzywą; `eagleeye state` pokazuje liczbę ruchów, a zapis sesji
 (`"record": true` w `config.json`) — szacunek pozycji przed i po każdym ruchu.
 
 **System nie widzi kamery** — sprawdź zasilanie (patrz pierwsza sekcja).
@@ -424,6 +432,10 @@ Zgłoszenia i pull requesty są mile widziane, zwłaszcza pomiary z innych egzem
 EagleEye (krzywa zoomu, dynamika, znak pan/tilt) — to najlepszy sposób, by sprawdzić,
 czy kalibracja nie jest specyficzna dla jednego urządzenia. Przed wysłaniem zmian
 uruchom testy.
+
+Aby dodać język, skopiuj `eagleeye/locales/en.json` do `<kod>.json`, przetłumacz wartości
+(zachowaj `{placeholdery}`), ustaw `_name` na nazwę języka w nim samym i uruchom
+`tests/test_catalogs.py`; aplikacja podchwyci nowy plik automatycznie.
 
 ## Licencja
 

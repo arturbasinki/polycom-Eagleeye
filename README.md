@@ -21,7 +21,7 @@ and follows you around. EagleEye Control adds both:
 - a **privacy mode** (one shortcut: the lens tilts down and callers see a placeholder),
 - **click-to-follow**: with several people in view, click the one the camera should track.
 
-> The UI and the command-line verbs are in Polish; the documentation is in English and Polish.
+> The UI is available in English and Polish (automatic from your system language, switchable in the app); the command-line verbs are English.
 
 ---
 
@@ -86,7 +86,7 @@ stateDiagram-v2
 
 Every person gets a number from `eagleeye/identity.py` (world-angle tracks plus a colour
 histogram of the torso, so numbers survive crossings and short disappearances). Click a
-person in the preview, or run `eagleeye wybierz X,Y`.
+person in the preview, or run `eagleeye select X,Y`.
 
 ```mermaid
 stateDiagram-v2
@@ -148,11 +148,11 @@ The installer is safe to run repeatedly. It:
 3. creates a Python virtualenv (CUDA build when an NVIDIA card is present),
 4. downloads the RTMO-s pose model (about 36 MB, from OpenMMLab),
 5. adds EagleEye to the app menu and the `eagleeye` command to `~/.local/bin`,
-6. enables the `eagleeye-zaslepka` user service, which keeps the virtual camera visible in
+6. enables the `eagleeye-placeholder` user service, which keeps the virtual camera visible in
    Chrome by showing a "EagleEye is not running" slate when the app is closed,
 7. binds **Super+Shift+C** to privacy mode.
 
-Uninstall with `./uninstall.sh` (`--wszystko` also removes the venv and kernel module).
+Uninstall with `./uninstall.sh` (`--all` also removes the venv and kernel module).
 
 ## Use
 
@@ -164,15 +164,16 @@ the app has no picture to track).
 | Command | What it does |
 |---|---|
 | `eagleeye` | start the app or show the running window |
-| `eagleeye prywatnosc [wl\|wyl]` | privacy mode: placeholder for callers, lens down (Super+Shift+C) |
-| `eagleeye sledzenie [wl\|wyl]` | auto-tracking on/off |
-| `eagleeye profil rozmowa` | tracking profile |
-| `eagleeye autozoom [wl\|wyl]` | automatic zoom (no argument: toggle) |
-| `eagleeye wybierz X,Y\|brak` | follow the person at a frame point, or `brak` to go back to automatic |
-| `eagleeye stan` | state as JSON, including tracking performance (Hz, detection time, frame age) |
-| `eagleeye zakoncz` | quit |
+| `eagleeye privacy [on\|off]` | privacy mode: placeholder for callers, lens down (Super+Shift+C) |
+| `eagleeye tracking [on\|off]` | auto-tracking on/off |
+| `eagleeye profile talk` | tracking profile |
+| `eagleeye autozoom [on\|off]` | automatic zoom (no argument: toggle) |
+| `eagleeye select X,Y\|none` | follow the person at a frame point, or `none` to go back to automatic (`eagleeye state` → `selection`: people and frame size) |
+| `eagleeye state` | state as JSON, including tracking performance (Hz, detection time, frame age) |
+| `eagleeye language [auto\|en\|pl]` | UI language |
+| `eagleeye quit` | quit |
 
-(`wl`/`wyl` = on/off.) Without installing: `.venv/bin/python -m eagleeye.cli`.
+(`on`/`off` switch a feature explicitly; with no argument the command toggles.) Without installing: `.venv/bin/python -m eagleeye.cli`.
 
 ---
 
@@ -183,9 +184,11 @@ the app has no picture to track).
 - **Image**: brightness, contrast, saturation, hue, gamma, sharpness, white balance (auto or
   2500–8000 K), backlight compensation.
 - **Presets**: complete camera poses (pan, tilt, zoom, focus), stored in `config.json`.
+- **Language**: English and Polish interface, picked up automatically from the system
+  language and switchable in the app.
 - **Auto-tracking** with two profiles:
 
-| | talk (`rozmowa`) | presentation (`prezentacja`) |
+| | talk | presentation |
 |---|---|---|
 | goal | calm: rare, smooth moves | keep up with a walking person |
 | status | ready | **experimental** (see below) |
@@ -197,7 +200,7 @@ the app has no picture to track).
 
 - **Auto zoom** picks the shot size from the shoulder-to-eyes distance and moves only on a
   lasting change (≥ 20 %, 2 s, stable target). A manual zoom change (slider, buttons, preset)
-  turns it off for good; re-enable it from the tracking panel or `eagleeye autozoom wl`.
+  turns it off for good; re-enable it from the tracking panel or `eagleeye autozoom on`.
 - **Search**: when tracking starts, the camera scans the room in 60° steps, beginning where
   it last saw someone. "Set home" stores the pose it returns to when nobody is around.
 
@@ -257,6 +260,8 @@ app.py                 Flet window = a view of the engine; closing hides to tray
     ├── privacy.py     privacy mode: slate, lens down, restore previous pose
     ├── control.py     UNIX socket: one-line JSON commands, single-instance lock
     ├── cli.py         the `eagleeye` command
+    ├── i18n.py        runtime translation: catalogs, fallback chain, language detection
+    ├── locales/       interface catalogs (`en.json`, `pl.json`)
     ├── v4l2.py        hardware: MJPEG stream (mmap, frame time), controls (ioctl), loopback output
     ├── detectors.py   RTMO-s pose model (ONNX Runtime CUDA/CPU), MJPEG decoding
     ├── perception.py  head point from pose keypoints
@@ -317,7 +322,7 @@ hardware and a free camera (V4L2 allows one stream client).
 
 **Meet does not list "EagleEye".** Chrome only sees a v4l2loopback device while something is
 writing to it, and it builds the camera list at startup. The app or the slate service must be
-writing: `systemctl --user status eagleeye-zaslepka` should say `active` and
+writing: `systemctl --user status eagleeye-placeholder` should say `active` and
 `cat /sys/class/video4linux/video10/state` should say `capture`. If the slate was not running
 when Chrome started, open `chrome://restart`. Do not set `exclusive_caps` to 0.
 
@@ -346,6 +351,10 @@ advanced. Enable "record session" and replay settings offline:
 Issues and pull requests are welcome, especially measurements from other EagleEye units
 (zoom curve, dynamics, pan/tilt sign), which is the most useful way to check that the
 calibration is not specific to one device. Run the test suite before sending changes.
+
+To add a language, copy `eagleeye/locales/en.json` to `<code>.json`, translate the values
+(keep the `{placeholders}`), set `_name` to the language's own name, and run
+`tests/test_catalogs.py`; the app picks the new file up automatically.
 
 ## License
 
