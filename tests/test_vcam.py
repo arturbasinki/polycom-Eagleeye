@@ -248,5 +248,41 @@ def test_card_name_of_non_video_node_is_none() -> None:
     assert card_name("/dev/null") is None
 
 
+def _gamma_table(exponent: float) -> np.ndarray:
+    return (255.0 * (np.arange(256) / 255.0) ** exponent).astype(np.uint8)
+
+
+def test_tone_table_changes_only_the_luma_plane() -> None:
+    ok, buf = cv2.imencode(".jpg", np.full((720, 1280, 3), (90, 140, 200), np.uint8))
+    jpg = buf.tobytes()
+    plain = jpeg_to_i420(jpg)
+    tuned = jpeg_to_i420(jpg, lut=_gamma_table(0.5))
+    y0, u0, v0 = planes(plain)
+    y1, u1, v1 = planes(tuned)
+    assert y1.mean() > y0.mean() + 20
+    assert np.array_equal(u0, u1) and np.array_equal(v0, v1)
+
+
+def test_virtual_camera_applies_the_tone_table_but_never_to_slates() -> None:
+    vc, dev, clock = rig()
+    src = FakeSource()
+    src.push(60)
+    vc.set_source(src)
+    vc.tick()
+    plain = planes(dev.frames[-1])[0].mean()
+    vc.set_tone(_gamma_table(0.5))
+    clock.t += 0.033
+    vc.tick()                                              # same camera frame, converted again with the table
+    assert planes(dev.frames[-1])[0].mean() > plain + 20
+    vc.set_privacy(True)
+    vc.tick()
+    assert dev.frames[-1] == card_i420(*card_texts(PRIVACY_CARD))
+    vc.set_privacy(False)
+    vc.set_tone(None)
+    clock.t += 0.033
+    vc.tick()
+    assert abs(planes(dev.frames[-1])[0].mean() - plain) < 1
+
+
 if __name__ == "__main__":
     run(globals(), "Virtual camera: frames and slates")

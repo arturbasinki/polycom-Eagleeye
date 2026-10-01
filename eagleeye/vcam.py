@@ -61,13 +61,15 @@ def bgr_to_i420(bgr: np.ndarray) -> bytes:
     return b"".join((y.tobytes(), u.tobytes(), v.tobytes()))
 
 
-def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE) -> bytes | None:
+def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE,
+                 lut: np.ndarray | None = None) -> bytes | None:
     """MJPEG frame -> I420 without going through RGB.
 
     JPEG stores the image as full-range YCbCr (JFIF), which is exactly
     what the output wants - so we decode straight to YCbCr instead of
     YCbCr -> RGB -> YUV. Measured on a 1080p frame: 26 ms CPU instead of 67 ms.
     Pillow, not ``cv2.imdecode`` - the reason is in :func:`decode_mjpeg`.
+    ``lut`` is an optional 256-entry table applied to the luma plane (light correction).
     """
     try:
         with warnings.catch_warnings():
@@ -81,6 +83,8 @@ def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE) -> bytes | None:
     if (ycc.shape[1], ycc.shape[0]) != (w, h):
         ycc = cv2.resize(ycc, (w, h), interpolation=cv2.INTER_AREA)
     y, u, v = cv2.split(ycc)
+    if lut is not None:
+        y = cv2.LUT(y, lut)
     u = cv2.resize(u, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
     v = cv2.resize(v, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
     return b"".join((y.tobytes(), u.tobytes(), v.tobytes()))
@@ -145,6 +149,7 @@ class VirtualCamera:
         self._live: bytes | None = None
         self._live_at = -math.inf
         self._privacy = False
+        self._tone: np.ndarray | None = None      # light-correction table for the luma plane
         self._card_privacy = self._card_no_signal = b""
         self.refresh_language()
         self._device = None
@@ -173,6 +178,13 @@ class VirtualCamera:
     def privacy(self) -> bool:
         return self._privacy
 
+    def set_tone(self, lut: np.ndarray | None) -> None:
+        """Light-correction table (256 x uint8) for live frames; None removes it. Slates are never
+        corrected. The latest camera frame is converted again on the next write."""
+        with self._lock:
+            self._tone = None if lut is None else np.ascontiguousarray(lut, dtype=np.uint8)
+            self._last_id = 0
+
     def current_frame(self) -> bytes:
         if self._privacy:
             return self._card_privacy
@@ -181,7 +193,7 @@ class VirtualCamera:
             if source is not None:
                 frame_id, jpg, _ = source.frame_timed(self._last_id, timeout=0.0)
                 if jpg is not None and frame_id != self._last_id:
-                    data = jpeg_to_i420(jpg, self.size)
+                    data = jpeg_to_i420(jpg, self.size, self._tone)
                     if data is not None:
                         self._last_id, self._live, self._live_at = frame_id, data, self._clock()
             live, live_at = self._live, self._live_at
