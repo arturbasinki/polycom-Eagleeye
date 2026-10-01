@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimalny odczyt możliwości urządzenia V4L2 przez surowe ioctl (bez v4l-utils)."""
+"""Minimal reading of a V4L2 device's capabilities through raw ioctl (without v4l-utils)."""
 import fcntl
 import os
 import struct
@@ -10,7 +10,7 @@ V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE = 9
 
 PIXFMT_NAMES = {}
 for code, name in [
-    (b"YUYV", "YUYV 4:2:2 (bez kompresji)"),
+    (b"YUYV", "YUYV 4:2:2 (uncompressed)"),
     (b"MJPG", "MJPEG"),
     (b"JPEG", "JPEG"),
     (b"NV12", "NV12"),
@@ -25,11 +25,11 @@ def fourcc(b):
 
 
 def fmt_name(pf):
-    return f"{fourcc(pf)} ({PIXFMT_NAMES.get(pf, 'nieznany')})"
+    return f"{fourcc(pf)} ({PIXFMT_NAMES.get(pf, 'unknown')})"
 
 
 def querycap(fd):
-    # struct v4l2_capability: 104 bajty
+    # struct v4l2_capability: 104 bytes
     buf = bytearray(104)
     fcntl.ioctl(fd, 0x80685600, buf)  # VIDIOC_QUERYCAP
     driver, card, bus = (buf[0:16], buf[16:48], buf[48:80])
@@ -111,7 +111,7 @@ for dev in sys.argv[1:]:
     try:
         fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
     except OSError as e:
-        print(f"  nie można otworzyć: {e}")
+        print(f"  cannot open: {e}")
         continue
     try:
         driver, card, bus, version, caps, devcaps = querycap(fd)
@@ -119,7 +119,7 @@ for dev in sys.argv[1:]:
         print(f"  bus={bus}  version={version}")
         print(f"  capabilities=0x{caps:08x}  device_caps=0x{devcaps:08x}")
         if not (devcaps & 0x00000001):
-            print("  >> to NIE jest węzeł przechwytujący wideo (brak VIDEO_CAPTURE)")
+            print("  >> this is NOT a video capture node (no VIDEO_CAPTURE)")
 
         for buf_type, tname in [
             (V4L2_BUF_TYPE_VIDEO_CAPTURE, "VIDEO_CAPTURE"),
@@ -128,7 +128,7 @@ for dev in sys.argv[1:]:
             fmts = enum_fmt(fd, buf_type)
             if not fmts:
                 continue
-            print(f"\n  --- formaty ({tname}) ---")
+            print(f"\n  --- formats ({tname}) ---")
             for _idx, desc, pf, flags in fmts:
                 print(f"    {fmt_name(pf):50s} desc={desc!r}")
                 sizes = enum_framesizes(fd, pf)

@@ -1,10 +1,10 @@
 #!/usr/bin/python3
-"""Ikona EagleEye w zasobniku GNOME.
+"""The EagleEye icon in the GNOME tray.
 
-Działa na SYSTEMOWYM python3 (ma gi/GTK i AyatanaAppIndicator3), nie w projektowym
-venv. Z aplikacją rozmawia przez gniazdo sterujące (eagleeye.control - tylko
-biblioteka standardowa). Uruchamia i zamyka ją silnik aplikacji; gdy aplikacji
-nie ma (gniazdo nie odpowiada), ikona sama się zamyka.
+Runs on the SYSTEM python3 (which has gi/GTK and AyatanaAppIndicator3), not the project
+venv. It talks to the application over the control socket (eagleeye.control - standard
+library only). The application engine starts and stops it; when the application
+is gone (the socket does not answer), the icon closes itself.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def main() -> int:
                                            AppIndicator.IndicatorCategory.HARDWARE)
     indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
     indicator.set_title("EagleEye")
-    updating = [False]     # zmiany z odpytywania stanu nie mogą wysyłać poleceń
+    updating = [False]     # changes from state polling must not send commands
 
     def command(cmd: str, arg: str | None = None) -> None:
         if updating[0]:

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Sterowanie kamerą Polycom EagleEye IV USB.
+"""Control the Polycom EagleEye IV USB camera.
 
-Aplikacja desktopowa (Flet/Flutter) do kamery udostępnianej przez V4L2.
-Uruchamianie::
+Desktop application (Flet/Flutter) for the camera exposed through V4L2.
+Running::
 
-    .venv/bin/flet run app.py          # okno natywne
-    .venv/bin/flet run --web app.py    # w przeglądarce
+    .venv/bin/flet run app.py          # native window
+    .venv/bin/flet run --web app.py    # in the browser
 
-Warstwy: ``eagleeye.v4l2`` (sprzęt), ``eagleeye.detectors`` (detekcja),
-``eagleeye.tracker`` (śledzenie), ``eagleeye.config`` (ustawienia).
+Layers: ``eagleeye.v4l2`` (hardware), ``eagleeye.detectors`` (detection),
+``eagleeye.tracker`` (tracking), ``eagleeye.config`` (settings).
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from eagleeye.v4l2 import (CID_BACKLIGHT_COMP, CID_BRIGHTNESS, CID_CONTRAST,
                            V4L2Error, list_input_devices)
 from eagleeye.vcam import CARD_LABEL, PRIVACY_CARD, card_texts, render_card
 
-# Paleta - ciemny motyw dobrany pod długą pracę przed kamerą.
+# Palette - a dark theme chosen for long work in front of the camera.
 BG = "#0e1116"
 PANEL = "#161b22"
 PANEL_SOFT = "#1c232c"
@@ -57,15 +57,15 @@ WARN = "#d29922"
 ERROR = "#f85149"
 
 SLIDER_WIDTH = 220
-OPTICS_STEP_ZOOM = 600      # krok zoomu przyciskami (~1.3x)
+OPTICS_STEP_ZOOM = 600      # zoom step of the buttons (~1.3x)
 OPTICS_STEP_FOCUS = 150
-PREVIEW_BADGE_PERIOD = 1.0  # s - napis z fps co klatkę to drugi komunikat do Fleta na klatkę
+PREVIEW_BADGE_PERIOD = 1.0  # s - an fps caption every frame is a second Flet message per frame
 
 log = logging.getLogger("eagleeye")
 
-# Kontrolki, które są nieaktywne, gdy działa tryb automatyczny: ``uvcvideo``
-# zwraca wtedy EPERM ("Permission denied") przy każdej próbie zapisu. Bez tej
-# obsługi suwak ostrości wygląda na działający, a nic nie robi.
+# Controls that are inactive while automatic mode is on: ``uvcvideo``
+# then returns EPERM ("Permission denied") on every write attempt. Without this
+# handling the focus slider looks like it works while doing nothing.
 AUTO_DEPENDENCIES = {
     CID_FOCUS_ABSOLUTE: CID_FOCUS_AUTO,
     CID_WHITE_BALANCE_TEMP: CID_WHITE_BALANCE_AUTO,
@@ -73,11 +73,11 @@ AUTO_DEPENDENCIES = {
 
 
 def ensure_manual_mode(controls: ControlDevice, ctrl_id: int) -> bool:
-    """Wyłącza tryb automatyczny, jeśli kontrolka jest od niego zależna.
+    """Turns automatic mode off if the control depends on it.
 
-    ``uvcvideo`` zwraca EPERM przy zapisie kontrolki nieaktywnej, więc żeby
-    ustawić ręczną ostrość trzeba najpierw wyłączyć autofocus. Zwraca ``True``,
-    gdy tryb automatyczny faktycznie został wyłączony.
+    ``uvcvideo`` returns EPERM when writing an inactive control, so to set
+    manual focus one must first turn autofocus off. Returns ``True``
+    when automatic mode was actually turned off.
     """
     auto = AUTO_DEPENDENCIES.get(ctrl_id)
     if auto is None:
@@ -87,7 +87,7 @@ def ensure_manual_mode(controls: ControlDevice, ctrl_id: int) -> bool:
             controls.set(auto, 0)
             return True
     except V4L2Error:
-        pass  # brak kontrolki auto - próbujemy zapisać i tak
+        pass  # no auto control - we try to write anyway
     return False
 
 
@@ -113,7 +113,7 @@ def _diag_text(state) -> str:
 
 
 class CameraApp:
-    """Cały stan aplikacji w jednym miejscu - interfejs i sprzęt."""
+    """The whole application state in one place - interface and hardware."""
 
     def __init__(self, page: ft.Page, engine: Engine, tray: TrayProcess) -> None:
         self.page = page
@@ -158,16 +158,16 @@ class CameraApp:
         s = self.settings
         tr = s["tracking"]
 
-        # Flet 1.0 wymaga niepustego `src` - startujemy z przezroczystym pikselem
-        # 1x1, który pierwsza klatka z kamery zaraz zastąpi.
+        # Flet 1.0 requires a non-empty `src` - we start with a transparent 1x1
+        # pixel, which the first camera frame will replace shortly.
         transparent_png = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wIAAgMBAp0YVwAAAABJRU5ErkJggg=="
         )
         self.preview = ft.Image(
             src=transparent_png, fit=ft.BoxFit.CONTAIN, gapless_playback=True,
             border_radius=10,
-            # Obraz przy górnej krawędzi, w poziomie na środku - tak samo liczy
-            # położenie nakładka (overlay_shapes), inaczej punkty się rozjeżdżają.
+            # The image sits at the top edge, horizontally centered - the overlay
+            # (overlay_shapes) computes the position the same way, otherwise the points drift apart.
             align=ft.Alignment.TOP_CENTER,
         )
         self.preview_placeholder = ft.Container(
@@ -181,7 +181,7 @@ class CameraApp:
                 ],
             ),
         )
-        # Wykrycia rysuje Flutter nad obrazem - klatka z kamery idzie do okna bez zmian.
+        # Flutter draws the detections over the image - the camera frame reaches the window unchanged.
         self.overlay_canvas = cv.Canvas(left=0, top=0, right=0, bottom=0,
                                         resize_interval=100, on_resize=self._on_overlay_resize)
         self._overlay_size = (0.0, 0.0)
@@ -201,12 +201,12 @@ class CameraApp:
             ],
         )
         self.preview_badge = self.preview_stack.controls[2].content
-        # Ta sama plansza, którą widzą uczestnicy - obiektyw i tak patrzy wtedy w podłogę.
+        # The same slate the participants see - the lens is pointing at the floor then anyway.
         self._privacy_card = cv2.imencode(".jpg", render_card(*card_texts(PRIVACY_CARD)))[1].tobytes()
         self._privacy_shown = False
-        self._shown = (None, None)          # (tracker, błąd) ostatnio pokazane w oknie
+        self._shown = (None, None)          # (tracker, error) last shown in the window
 
-        # --- połączenie ---
+        # --- connection ---
         self.device_dd = ft.Dropdown(
             label=t("app.device"), value=s["device"], width=200, dense=True,
             options=[ft.DropdownOption(key=d, text=d) for d in (list_input_devices(CARD_LABEL) or [s["device"]])],
@@ -239,7 +239,7 @@ class CameraApp:
         self.connect_btn = ft.FilledButton(t("app.connect"), icon=ft.Icons.CABLE, on_click=self._on_connect)
         self.connection_status = ft.Text("", size=12, color=MUTED)
 
-        # --- wirtualna kamera ---
+        # --- virtual camera ---
         self.vcam_status = ft.Text("", size=12, color=MUTED)
         self.privacy_sw = ft.Switch(label=t("app.privacy_switch"), value=False,
                                     on_change=self._on_privacy_change)
@@ -271,7 +271,7 @@ class CameraApp:
             ],
         )
 
-        # --- optyka ---
+        # --- optics ---
         self.zoom_slider = self._axis_slider(t("app.zoom"), CID_ZOOM_ABSOLUTE, fmt=lambda v: f"{v}")
         self.zoom_in_btn = ft.FilledTonalButton(t("app.zoom_plus"), icon=ft.Icons.ZOOM_IN,
                                                 on_click=lambda e: self._nudge(CID_ZOOM_ABSOLUTE, OPTICS_STEP_ZOOM))
@@ -285,9 +285,9 @@ class CameraApp:
                                                   on_click=lambda e: self._nudge(CID_FOCUS_ABSOLUTE, -OPTICS_STEP_FOCUS))
         self.gpu_text = ft.Text("", size=11, color=MUTED)
 
-        # --- obraz ---
-        # Zawartość tej karty powstaje dopiero po połączeniu z kamerą, bo
-        # dopiero wtedy znamy listę kontrolek i ich zakresy.
+        # --- image ---
+        # The content of this card is built only after connecting to the camera, because
+        # only then do we know the list of controls and their ranges.
         self.image_body = ft.Column(spacing=9, controls=[])
         self.image_switches: list[ft.Control] = []
 
@@ -295,8 +295,8 @@ class CameraApp:
         self.track_sw = ft.Switch(label=t("app.tracking_switch"), value=False, on_change=self._on_tracking_toggle)
         self.profile_dd = ft.Dropdown(
             label=t("app.profile"), width=170, dense=True, value=tr["profile"],
-            # "prezentacja" z samą mechaniką nie jedzie płynnie za idącą osobą (odbiór
-            # 2026-09-23) - czeka na cyfrowy kadr, więc jest oznaczona w interfejsie.
+            # "presentation" with pure mechanics does not follow a walking person smoothly (acceptance
+            # 2026-09-23) - it waits for a digital frame, so it is marked in the interface.
             options=[ft.DropdownOption(key=name, text=t(f"profile.{name}")) for name in PROFILES],
             on_select=self._on_profile_change,
         )
@@ -306,7 +306,7 @@ class CameraApp:
         self.search_btn = ft.FilledTonalButton(t("app.search_person"), icon=ft.Icons.TRAVEL_EXPLORE,
                                                on_click=self._on_search)
         self.home_btn = ft.OutlinedButton(t("app.set_home"), icon=ft.Icons.HOME, on_click=self._on_set_home)
-        # Osoba do śledzenia: kliknięcie w podgląd (_on_preview_tap); przycisk wraca do trybu automatycznego.
+        # Person to track: a click on the preview (_on_preview_tap); the button returns to automatic mode.
         self.auto_pick_btn = ft.OutlinedButton(t("app.track_auto"), icon=ft.Icons.PERSON_SEARCH,
                                                disabled=True, on_click=self._on_auto_pick)
         self.select_status = ft.Text(t("app.select_hint"), size=12, color=MUTED)
@@ -344,13 +344,13 @@ class CameraApp:
         self.track_status = ft.Text("", size=12, color=MUTED, selectable=True)
         self.track_detail = ft.Text("", size=11, color=MUTED, font_family="monospace", selectable=True)
 
-        # --- presety ---
+        # --- presets ---
         self.preset_dd = ft.Dropdown(label=t("app.preset"), width=190, dense=True, options=[],
                                      on_select=lambda e: None)
         self.preset_name = ft.TextField(label=t("app.preset_name"), width=190, dense=True)
         self._refresh_preset_options()
 
-        # --- stopka ---
+        # --- footer ---
         self.footer = ft.Text("", size=11, color=MUTED, font_family="monospace", selectable=True)
         self.notice = ft.Text("", size=12, color=WARN, selectable=True)
 
@@ -496,7 +496,7 @@ class CameraApp:
         ))
 
     def _image_controls(self) -> list[ft.Control]:
-        """Suwaki i przełączniki obrazu budowane z kontrolek zgłoszonych przez kamerę."""
+        """Image sliders and switches built from the controls reported by the camera."""
         order = [
             (CID_BRIGHTNESS, t("app.image_brightness")), (CID_CONTRAST, t("app.image_contrast")),
             (CID_SATURATION, t("app.image_saturation")), (CID_HUE, t("app.image_hue")),
@@ -526,7 +526,7 @@ class CameraApp:
         return out
 
     # ------------------------------------------------------------------
-    # Obsługa sprzętu
+    # Hardware handling
     # ------------------------------------------------------------------
 
     def _show_connected(self) -> None:
@@ -547,10 +547,10 @@ class CameraApp:
         self.engine.close_camera()
 
     def _apply_control_ranges(self) -> None:
-        """Ustawia suwakom prawdziwe zakresy z kontrolek kamery.
+        """Gives the sliders their real ranges from the camera controls.
 
-        Interfejs powstaje przed połączeniem, więc suwaki startują z zakresami
-        zastępczymi - tutaj dostają właściwe (np. pan to ±612000, nie 0..100).
+        The interface is built before connecting, so the sliders start with placeholder
+        ranges - here they get the proper ones (e.g. pan is ±612000, not 0..100).
         """
         if not self.controls:
             return
@@ -566,11 +566,11 @@ class CameraApp:
                 widget.value = max(ctrl.minimum, min(ctrl.maximum, self.controls.get(cid)))
             except V4L2Error:
                 widget.value = ctrl.default
-            log.info("kontrolka 0x%08x %-22s zakres %d..%d (krok %d), wartość %s",
+            log.info("control 0x%08x %-22s range %d..%d (step %d), value %s",
                      cid, ctrl.name, ctrl.minimum, ctrl.maximum, step, widget.value)
 
     def _rebuild_image_controls(self) -> None:
-        """Buduje sekcję obrazu z kontrolek faktycznie zgłoszonych przez kamerę."""
+        """Builds the image section from the controls actually reported by the camera."""
         self.control_widgets = {cid: w for cid, w in self.control_widgets.items()
                                 if cid not in self._image_control_ids()}
         self.image_body.controls = self._image_controls()
@@ -581,7 +581,7 @@ class CameraApp:
                 CID_BACKLIGHT_COMP}
 
     def _sync_from_device(self) -> None:
-        """Wczytuje bieżące wartości kontrolek i ustawia suwaki."""
+        """Reads the current control values and sets the sliders."""
         if not self.controls:
             return
         for cid, widget in self.control_widgets.items():
@@ -591,8 +591,8 @@ class CameraApp:
                 value = self.controls.get(cid)
             except V4L2Error:
                 continue
-            # Ograniczamy do zakresu suwaka: Flet odrzuca wartość spoza
-            # min/max, a suwak mógł jeszcze nie dostać prawdziwego zakresu.
+            # Limit to the slider's range: Flet rejects a value outside
+            # min/max, and the slider may not have received its real range yet.
             widget.value = max(widget.min, min(widget.max, value))
         for cid, widget in self.switch_widgets.items():
             try:
@@ -605,7 +605,7 @@ class CameraApp:
             pass
 
     # ------------------------------------------------------------------
-    # Zdarzenia interfejsu
+    # Interface events
     # ------------------------------------------------------------------
 
     def _control_label(self, ctrl_id: int) -> str:
@@ -626,9 +626,9 @@ class CameraApp:
     def _write(self, ctrl_id: int, value: int) -> None:
         if not self.controls:
             return
-        # Kontrolki zależne od trybu automatycznego: zapis kończy się EPERM, gdy
-        # auto jest włączone. Zamiast pokazywać błąd, wyłączamy automatyzm -
-        # tak samo zachowuje się aparat, gdy przekręcisz pierścień ostrości.
+        # Controls that depend on automatic mode: writing ends in EPERM when
+        # auto is on. Instead of showing an error, we turn the automation off -
+        # exactly as a camera behaves when you turn the focus ring.
         auto = AUTO_DEPENDENCIES.get(ctrl_id)
         if auto is not None:
             try:
@@ -644,14 +644,14 @@ class CameraApp:
                     self._notify(t("app.notice_auto_mode_off",
                                    control=self._control_label(ctrl_id)), MUTED)
             except V4L2Error:
-                pass  # brak kontrolki auto - i tak próbujemy zapisać
+                pass  # no auto control - we try to write anyway
         try:
             self.controls.set(ctrl_id, int(value))
         except V4L2Error as exc:
             self._notify(self._friendly_error(exc), ERROR)
 
     def _on_slider_change(self, ctrl_id: int, value: float) -> None:
-        # Pan/tilt idą przez tracker (wykonawcę), żeby model głowicy znał każdy ruch.
+        # Pan/tilt go through the tracker (the actuator), so the head model knows about every move.
         if ctrl_id in (CID_PAN_ABSOLUTE, CID_TILT_ABSOLUTE) and self.tracker is not None:
             target = int(round(value))
             moved = self.tracker.move_to(pan=target if ctrl_id == CID_PAN_ABSOLUTE else None,
@@ -682,7 +682,7 @@ class CameraApp:
         if self.tracker is None:
             return
         delta = float(self.step_dd.value or 5) * 3600
-        # dy=+1 oznacza "w dół", a tilt dodatni patrzy w górę.
+        # dy=+1 means "down", and a positive tilt looks up.
         if not self.tracker.nudge(dx * delta, -dy * delta):
             self._notify(t("app.hint_manual_control"), WARN)
 
@@ -737,7 +737,7 @@ class CameraApp:
         tr = self.settings["tracking"]
         tr["profile"] = e.control.value or "talk"
         tr["overrides"] = {}
-        self.shot_dd.value = resolve(tr["profile"], {}).shot    # nowy profil = jego plan
+        self.shot_dd.value = resolve(tr["profile"], {}).shot    # a new profile = its shot
         if self.tracker:
             self.tracker.set_profile(tr["profile"], {})
         self._notify(t("app.notice_profile_default", profile=tr["profile"]), OK)
@@ -751,8 +751,8 @@ class CameraApp:
             e.control.value = False
             e.control.update()
             return
-        # Pole pod podglądem to jednorazowy komunikat o zdarzeniu - bieżący stan
-        # (szukanie/śledzenie) pokazuje na żywo prawy panel.
+        # The field under the preview is a one-off event message - the current state
+        # (searching/tracking) is shown live in the right panel.
         self._notify(t("app.notice_tracking_on") if enabled else t("app.notice_tracking_off"),
                      OK if enabled else MUTED)
 
@@ -764,7 +764,7 @@ class CameraApp:
         self._notify(t("app.notice_search_started"), OK)
 
     def _on_preview_tap(self, e) -> None:
-        """Kliknięcie w podgląd wybiera osobę pod kursorem (tracker liczy trafienie w swojej klatce)."""
+        """A click on the preview selects the person under the cursor (the tracker computes the hit in its own frame)."""
         tracker = self.tracker
         if tracker is None or not tracker.enabled or e.local_position is None:
             return
@@ -843,7 +843,7 @@ class CameraApp:
         self._notify(t("app.notice_privacy_on") if on else t("app.notice_privacy_off"),
                      WARN if on else OK)
 
-    # --- presety ---
+    # --- presets ---
 
     def _refresh_preset_options(self) -> None:
         self.preset_dd.options = [ft.DropdownOption(key=p.name, text=p.name)
@@ -884,7 +884,7 @@ class CameraApp:
             if self.controls and self.controls.control(cid):
                 self._write(cid, value)
         if self.tracker:
-            self.tracker.move_to(pan=preset.pan, tilt=preset.tilt)   # przez wykonawcę - model głowicy wie o ruchu
+            self.tracker.move_to(pan=preset.pan, tilt=preset.tilt)   # through the actuator - the head model knows about the move
         self._sync_from_device()
         self._refresh_widgets()
         self._notify(t("app.notice_preset_loaded", name=name), OK)
@@ -900,7 +900,7 @@ class CameraApp:
             self._notify(t("app.notice_preset_deleted", name=name), OK)
             self._refresh_widgets()
 
-    # --- akcje ---
+    # --- actions ---
 
     def _on_snapshot(self, _e) -> None:
         if self._last_jpg is None:
@@ -918,7 +918,7 @@ class CameraApp:
     def _on_reset_image(self, _e) -> None:
         if not self.controls:
             return
-        # Balans auto na końcu: zapis temperatury bieli wyłącza auto (AUTO_DEPENDENCIES).
+        # Auto balance last: writing the white balance turns auto off (AUTO_DEPENDENCIES).
         for cid in (CID_BRIGHTNESS, CID_CONTRAST, CID_SATURATION, CID_HUE, CID_GAMMA,
                     CID_SHARPNESS, CID_WHITE_BALANCE_TEMP, CID_BACKLIGHT_COMP,
                     CID_WHITE_BALANCE_AUTO):
@@ -959,12 +959,12 @@ class CameraApp:
             pass
 
     # ------------------------------------------------------------------
-    # Pętle: podgląd i status
+    # Loops: preview and status
     # ------------------------------------------------------------------
 
     def _sync_connection(self) -> None:
-        """Pokazuje stan połączenia z silnika - także gdy silnik połączył się sam
-        (kamera zwolniona przez inny program) albo zmienił komunikat błędu."""
+        """Shows the connection state from the engine - also when the engine connected by itself
+        (camera released by another program) or changed the error message."""
         self._shown = (self.engine.tracker, self.engine.error)
         if self.engine.error or self.engine.tracker is None:
             self.connection_status.value = render(self.engine.error) or t("app.camera_disconnected")
@@ -979,7 +979,7 @@ class CameraApp:
         self.page.run_task(self._preview_loop)
         self.page.run_task(self._status_loop)
 
-    # --- okno: pokaż / schowaj / zamknij (komendy z zewnątrz) -----------------
+    # --- window: show / hide / close (external commands) ---
 
     def show_window(self) -> None:
         self.page.run_task(self._show)
@@ -991,7 +991,7 @@ class CameraApp:
         try:
             await self.page.window.to_front()
         except Exception:
-            pass          # Wayland może odmówić wyciągnięcia okna na wierzch
+            pass          # Wayland may refuse to raise the window
 
     def hide_window(self) -> None:
         self.page.run_task(self._hide)
@@ -1030,9 +1030,9 @@ class CameraApp:
             pass
 
     async def _preview_loop(self) -> None:
-        """Przekazuje klatki do kontrolki Image, z opcjonalnym rysowaniem wykryć."""
+        """Passes frames to the Image control, with optional detection drawing."""
         while not self.closing:
-            if self.hidden:                            # schowane okno: nie wysyłamy klatek do Fleta
+            if self.hidden:                            # hidden window: we do not send frames to Flet
                 await asyncio.sleep(0.2)
                 continue
             if self.engine.privacy.active:
@@ -1040,7 +1040,7 @@ class CameraApp:
                     self._show_privacy_card()
                 await asyncio.sleep(0.1)
                 continue
-            if self._privacy_shown:                    # koniec prywatności: plansza znika
+            if self._privacy_shown:                    # end of privacy: the slate disappears
                 self._privacy_shown = False
                 self.preview.visible = self.stream is not None
                 self.preview_placeholder.visible = self.stream is None
@@ -1079,7 +1079,7 @@ class CameraApp:
                     0.85 * self._preview_fps_ema + 0.15 * inst
             try:
                 if self._sync_overlay():
-                    self.preview_stack.update()         # obraz i nakładka w jednym komunikacie
+                    self.preview_stack.update()         # image and overlay in one message
                 else:
                     self.preview.update()
                 if now - self._last_badge >= PREVIEW_BADGE_PERIOD:
@@ -1098,7 +1098,7 @@ class CameraApp:
         self._overlay_size = (e.width, e.height)
 
     def _sync_overlay(self) -> bool:
-        """Ustawia kształty nakładki; ``True``, gdy się zmieniły i trzeba je wysłać."""
+        """Sets the overlay shapes; ``True`` when they changed and need to be sent."""
         state = self.tracker.state if self.tracker else None
         if not self.overlay or state is None or not state.enabled:
             state = None
@@ -1128,12 +1128,12 @@ class CameraApp:
         return out
 
     async def _status_loop(self) -> None:
-        """Odświeża odczyty z kamery i statystyki trackera kilka razy na sekundę."""
+        """Refreshes the camera readings and tracker statistics a few times per second."""
         while not self.closing:
             await asyncio.sleep(0.25)
             try:
-                # Stan wirtualnej kamery i prywatność aktualizujemy też bez kamery -
-                # plansza i przełącznik muszą działać, gdy urządzenia nie ma.
+                # Virtual camera state and privacy are updated even without a camera -
+                # the slate and the switch must work when there is no device.
                 self.vcam_status.value = t("app.vcam_state", state=render(self.engine.vcam.status))
                 self.privacy_sw.value = self.engine.privacy.active
                 if (self.engine.tracker, self.engine.error) != self._shown:
@@ -1155,9 +1155,10 @@ class CameraApp:
                     self.select_status.value = render(selection_text(state) or msg("app.select_hint"))
                     self.auto_pick_btn.disabled = state.selection == "auto"
                     if self.track_sw.value != state.enabled:
-                        self.track_sw.value = state.enabled      # tracker mógł się sam wyłączyć (błąd, odłączenie)
+                        self.track_sw.value = state.enabled      # the tracker may have turned itself off (error, disconnect)
                     if state.enabled and self.auto_zoom_sw.value and not state.auto_zoom:
-                        # Tracker wyłączył automat, bo zoom zmieniono ręcznie - utrwalamy i mówimy.
+                        # The tracker turned automation off because the zoom was changed manually -
+                        # we persist it and say so.
                         self.auto_zoom_sw.value = False
                         self.settings["tracking"]["auto_zoom"] = False
                         self._save_settings(silent=True)
@@ -1181,14 +1182,14 @@ def main(page: ft.Page, engine: Engine, tray: TrayProcess) -> None:
         page.window.min_width = 1100
         page.window.min_height = 700
     except Exception:
-        pass  # w trybie webowym okno nie istnieje
+        pass  # in web mode there is no window
     app = CameraApp(page, engine, tray)
     engine.ui = UiHooks(show=app.show_window, hide=app.hide_window, quit=app.quit_app)
     try:
         page.window.prevent_close = True
         page.window.on_event = app.on_window_event
     except Exception:
-        pass  # w trybie webowym okno nie istnieje
+        pass  # in web mode there is no window
     page.run_task(app.run)
 
 
@@ -1196,46 +1197,46 @@ def _parse_args(argv: list[str]):
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Sterowanie kamerą Polycom EagleEye IV USB",
-        epilog="Domyślnie otwiera okno natywne. Uruchamiane też przez 'flet run app.py'.",
+        description="Control the Polycom EagleEye IV USB camera",
+        epilog="By default opens the native window. Also run through 'flet run app.py'.",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--web", action="store_true",
-                      help="serwuj jako aplikację webową pod podanym adresem (bez otwierania okna)")
+                      help="serve as a web application at the given address (without opening a window)")
     mode.add_argument("--browser", action="store_true",
-                      help="uruchom jako aplikację webową i otwórz przeglądarkę")
-    mode.add_argument("--hidden", action="store_true", help="okno natywne, ale ukryte")
-    parser.add_argument("--host", default="127.0.0.1", help="adres nasłuchu w trybie webowym")
-    parser.add_argument("--port", type=int, default=8550, help="port w trybie webowym")
+                      help="run as a web application and open the browser")
+    mode.add_argument("--hidden", action="store_true", help="native window, but hidden")
+    parser.add_argument("--host", default="127.0.0.1", help="listen address in web mode")
+    parser.add_argument("--port", type=int, default=8550, help="port in web mode")
     return parser.parse_known_args(argv)[0]
 
 
 def run_app(argv: list[str] | None = None) -> None:
-    """Uruchamia aplikację: silnik, gniazdo sterujące, ikonę w zasobniku, okno."""
+    """Starts the application: engine, control socket, tray icon, window."""
     logging.basicConfig(
         level=logging.INFO, stream=sys.stdout,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    # OpenCV 5 nie ma już cv2.setLogLevel - jest cv2.utils.logging.
-    # Uwaga: komunikatów libjpeg ("Corrupt JPEG data: N extraneous bytes
-    # before marker 0xd9") nie da się tym wyciszyć, bo libjpeg pisze wprost
-    # na stderr. Kamera dokłada kilka bajtów dopełnienia przed znacznikiem EOI,
-    # obraz dekoduje się poprawnie - to wyłącznie szum w terminalu.
+    # OpenCV 5 no longer has cv2.setLogLevel - it is cv2.utils.logging.
+    # Note: libjpeg messages ("Corrupt JPEG data: N extraneous bytes
+    # before marker 0xd9") cannot be silenced this way, because libjpeg writes directly
+    # to stderr. The camera adds a few bytes of padding before the EOI marker,
+    # the image decodes correctly - it is only terminal noise.
     try:
         cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
     except AttributeError:
         pass
-    # Pula OpenCV ma domyślnie wątek na rdzeń; przy operacjach na jednej klatce
-    # wątki głównie czekają aktywnie. Zmierzone na konwersji 1080p dla vcam:
-    # 12 wątków 67 ms CPU/klatkę, 2 wątki 26 ms - przy prawie tym samym czasie.
+    # The OpenCV pool has one thread per core by default; on single-frame operations
+    # the threads mostly spin. Measured on 1080p conversion for vcam:
+    # 12 threads 67 ms CPU/frame, 2 threads 26 ms - at almost the same wall time.
     cv2.setNumThreads(2)
     args = _parse_args(list(argv if argv is not None else sys.argv[1:]))
     engine = Engine(Store())
     server = ControlServer(engine.command)
     tray = TrayProcess()
     try:
-        server.start()      # najpierw gniazdo: drugie uruchomienie w trakcie startu tylko pokaże okno
+        server.start()      # socket first: a second start during startup will only show the window
     except InstanceRunning:
         send("show", None, server.path)
         return

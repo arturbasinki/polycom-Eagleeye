@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Przechwycenie jednej ramki z kamery V4L2 przez mmap (bez v4l-utils/ffmpeg).
+"""Grabbing one frame from a V4L2 camera through mmap (without v4l-utils/ffmpeg).
 
-Użycie: v4l2-grab.py /dev/video0 wyjscie.jpg [szerokosc wysokosc]
+Usage: v4l2-grab.py /dev/video0 output.jpg [width height]
 """
 import ctypes
 import fcntl
@@ -16,10 +16,10 @@ V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
 V4L2_MEMORY_MMAP = 1
 V4L2_FIELD_NONE = 1
 
-# struct v4l2_format: type(0) + padding(4) + union fmt na offsecie 8.
-# Unia zawiera wskaznik, wiec jest wyrownana do 8 bajtow - stad te 4 bajty
-# paddingu. struct v4l2_pix_format lezy zatem na offsecie 8 struktury,
-# czyli offset 4 w naszym buforze "raw".
+# struct v4l2_format: type(0) + padding(4) + union fmt at offset 8.
+# The union contains a pointer, so it is aligned to 8 bytes - hence these 4 bytes
+# of padding. struct v4l2_pix_format therefore sits at offset 8 of the structure,
+# i.e. offset 4 in our "raw" buffer.
 PIX_OFF = 4
 
 
@@ -113,14 +113,14 @@ def main():
 
     if ctypes.sizeof(V4L2Format) != 208 or ctypes.sizeof(V4L2Buffer) != 88:
         print(
-            f"UWAGA: rozmiary struktur {ctypes.sizeof(V4L2Format)}/"
-            f"{ctypes.sizeof(V4L2Buffer)} (oczekiwano 208/88)"
+            f"WARNING: structure sizes {ctypes.sizeof(V4L2Format)}/"
+            f"{ctypes.sizeof(V4L2Buffer)} (expected 208/88)"
         )
 
     fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
     maps = []
     try:
-        # 1. Ustaw format MJPEG w zadanej rozdzielczosci
+        # 1. Set the MJPEG format at the requested resolution
         fmt = V4L2Format()
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE
         struct.pack_into("=II", fmt.raw, PIX_OFF, width, height)
@@ -132,17 +132,17 @@ def main():
         bpl, sizeimage = struct.unpack_from("=II", fmt.raw, PIX_OFF + 16)
         print(f"[S_FMT] {w}x{h} {pf} bytesperline={bpl} sizeimage={sizeimage}")
 
-        # 2. Zarezerwuj bufory
+        # 2. Reserve buffers
         req = V4L2Requestbuffers()
         req.count = 4
         req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE
         req.memory = V4L2_MEMORY_MMAP
         fcntl.ioctl(fd, VIDIOC_REQBUFS, req)
-        print(f"[REQBUFS] dostalem {req.count} buforow")
+        print(f"[REQBUFS] got {req.count} buffers")
         if req.count < 2:
-            raise RuntimeError("za malo buforow")
+            raise RuntimeError("too few buffers")
 
-        # 3. Zmapuj i zakolejkuj
+        # 3. Map and queue
         for i in range(req.count):
             buf = V4L2Buffer()
             buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -156,20 +156,20 @@ def main():
             maps.append(m)
             fcntl.ioctl(fd, VIDIOC_QBUF, buf)
 
-        # 4. Start strumienia
+        # 4. Start the stream
         fcntl.ioctl(fd, VIDIOC_STREAMON, struct.pack("=I", V4L2_BUF_TYPE_VIDEO_CAPTURE))
-        print("[STREAMON] strumien uruchomiony, czekam na ramke...")
+        print("[STREAMON] stream started, waiting for a frame...")
 
-        # 5. Zbierz ramki. Pierwsze klatki po STREAMON bywaja urwane
-        # (enkoder MJPEG jeszcze sie stabilizuje), wiec akceptujemy tylko
-        # kompletne JPEG-i: SOI na poczatku i EOI na koncu.
+        # 5. Collect frames. The first frames after STREAMON are sometimes truncated
+        # (the MJPEG encoder is still stabilizing), so we accept only
+        # complete JPEGs: SOI at the start and EOI at the end.
         saved = 0
         skipped = 0
         deadline = time.time() + 20.0
         while saved < 3 and time.time() < deadline:
             r, _, _ = select.select([fd], [], [], 5.0)
             if not r:
-                print("  timeout - brak ramki")
+                print("  timeout - no frame")
                 continue
             buf = V4L2Buffer()
             buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -189,14 +189,14 @@ def main():
                 skipped += 1
                 if skipped <= 5:
                     print(
-                        f"  [odrzucona] buf={buf.index} seq={buf.sequence} "
+                        f"  [rejected] buf={buf.index} seq={buf.sequence} "
                         f"{buf.bytesused} B flags=0x{buf.flags:02x} "
                         f"SOI={data[:2] == b'\\xff\\xd8'} EOI={data[-2:] == b'\\xff\\xd9'}"
                     )
             fcntl.ioctl(fd, VIDIOC_QBUF, buf)
 
         fcntl.ioctl(fd, VIDIOC_STREAMOFF, struct.pack("=I", V4L2_BUF_TYPE_VIDEO_CAPTURE))
-        print(f"[STREAMOFF] zapisane kompletne ramki: {saved}, odrzucone: {skipped}")
+        print(f"[STREAMOFF] saved complete frames: {saved}, rejected: {skipped}")
         return 0 if saved else 1
     finally:
         for m in maps:

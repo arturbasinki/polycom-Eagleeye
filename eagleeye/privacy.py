@@ -1,7 +1,7 @@
-"""Tryb prywatności: plansza dla uczestników, obiektyw w dół, powrót do stanu sprzed.
+"""Privacy mode: the slate for participants, the lens down, and a return to the previous state.
 
-Kolejność ma znaczenie: plansza pojawia się natychmiast (zanim głowica ruszy),
-a przy wyłączaniu najpierw rozkaz powrotu, potem obraz na żywo.
+Order matters: the slate appears immediately (before the head moves), and on disable the
+return command goes first, then the live image.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ class Privacy:
 
     @property
     def saved_pose(self) -> tuple[float, float] | None:
-        """Pozycja głowicy sprzed włączenia prywatności (None bez kamery)."""
+        """Head position from before privacy was enabled (None with no camera)."""
         return self._saved_pose
 
     def enable(self, tracker) -> None:
@@ -33,8 +33,8 @@ class Privacy:
         self.active = True
 
     def disable(self, tracker, resume_tracking: bool = True) -> None:
-        """``resume_tracking=False`` przy zamykaniu aplikacji: głowica wraca,
-        ale śledzenie nie rusza (jego rozkazy prędkości przerwałyby powrót)."""
+        """``resume_tracking=False`` when the app is closing: the head returns,
+        but tracking does not restart (its velocity commands would interrupt the return)."""
         if not self.active:
             return
         if tracker is not None and self._saved_pose is not None:

@@ -1,11 +1,11 @@
-"""Sterowanie działającą aplikacją przez gniazdo UNIX: jedna linia JSON w każdą stronę.
+"""Control a running app over a UNIX socket: one line of JSON each way.
 
-Żądanie ``{"cmd": ..., "arg": ...}``, odpowiedź ``{"ok": true, "state": {...}}`` albo
-``{"ok": false, "error": "...", "message": {...}}``. Moduł używa wyłącznie biblioteki standardowej -
-importuje go też ikona w zasobniku, działająca na systemowym python3 bez venv.
+Request ``{"cmd": ..., "arg": ...}``, reply ``{"ok": true, "state": {...}}`` or
+``{"ok": false, "error": "...", "message": {...}}``. The module uses only the standard library -
+the tray icon imports it too, running on the system python3 without the venv.
 
-Gniazdo służy też jako blokada jednej instancji: kto się do niego dodzwoni,
-ten wie, że aplikacja już działa.
+The socket also acts as a single-instance lock: whoever reaches it knows the app
+is already running.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class _Server(socketserver.ThreadingUnixStreamServer):
 
 
 class InstanceRunning(RuntimeError):
-    """Gniazdo należy do żywej instancji - ten proces ma się nie uruchamiać."""
+    """The socket belongs to a live instance - this process must not start."""
 
 
 class ControlServer:
@@ -62,10 +62,10 @@ class ControlServer:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Zajmuje gniazdo. InstanceRunning, gdy odpowiada na nim żywa instancja.
+        """Takes the socket. InstanceRunning when a live instance answers on it.
 
-        bind() jest atomowy: z dwóch procesów startujących naraz gniazdo dostaje
-        jeden, drugi trafia na EADDRINUSE. Plik po awarii (nikt nie odpowiada) usuwamy.
+        bind() is atomic: of two processes starting at once, one gets the socket and
+        the other hits EADDRINUSE. The file left after a crash (nobody answers) is removed.
         """
         old_umask = os.umask(0o177)
         try:
@@ -95,7 +95,7 @@ class ControlServer:
 
 
 def send(cmd: str, arg: str | None = None, path: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
-    """Wysyła polecenie. OSError, gdy aplikacja nie działa."""
+    """Sends a command. OSError when the app is not running."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         s.connect(str(path or socket_path()))
@@ -110,7 +110,7 @@ def send(cmd: str, arg: str | None = None, path: Path | None = None, timeout: fl
 
 
 def instance_running(path: Path | None = None) -> bool:
-    """Czy działa inna instancja. Martwe gniazdo (po awarii) jest usuwane."""
+    """Whether another instance is running. A dead socket (after a crash) is removed."""
     p = Path(path or socket_path())
     try:
         send("state", path=p)

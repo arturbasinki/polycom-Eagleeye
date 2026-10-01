@@ -1,20 +1,20 @@
-"""Warstwa dostępu do V4L2 dla kamery Polycom EagleEye IV USB.
+"""V4L2 access layer for the Polycom EagleEye IV USB camera.
 
-Dwie niezależne ścieżki, celowo na osobnych deskryptorach:
+Two independent paths, deliberately on separate file descriptors:
 
-* :class:`MjpegStream` - wątek przechwytujący klatki (mmap + streaming).
-* :class:`ControlDevice` - odczyt i zapis kontrolek (nie koliduje ze strumieniem).
+* :class:`MjpegStream` - the frame-grabbing thread (mmap + streaming).
+* :class:`ControlDevice` - control reads and writes (does not interfere with the stream).
 
-Uwagi o układzie struktur, na których łatwo się przewrócić:
+Notes on the layout of the structures that are easy to get wrong:
 
-* ``struct v4l2_format`` ma unię ``fmt`` na offsecie **8**, nie 4 - unia zawiera
-  wskaźnik, więc jest wyrównana do 8 bajtów. W naszym buforze ``raw`` (który
-  zaczyna się na offsecie 4 struktury) ``v4l2_pix_format`` leży więc na offsecie 4.
-* ``struct v4l2_ext_control`` ma **20 bajtów** - unia jest ``__packed``, więc nie
-  ma dopełnienia do 24. Odtwarzamy to jawnie polem ``_pad``, bez ``_pack_``,
-  żeby nie wpaść w deprecjację i zachować naturalne wyrównanie do 4.
-* Przestarzałe ``VIDIOC_G_CTRL``/``S_CTRL`` zwracają ``ENOTTY`` na uvcvideo;
-  używamy ``VIDIOC_G_EXT_CTRLS``/``S_EXT_CTRLS``.
+* ``struct v4l2_format`` has the ``fmt`` union at offset **8**, not 4 - the union contains
+  a pointer, so it is aligned to 8 bytes. In our ``raw`` buffer (which
+  starts at offset 4 of the structure) ``v4l2_pix_format`` therefore sits at offset 4.
+* ``struct v4l2_ext_control`` is **20 bytes** - the union is ``__packed``, so there is
+  no padding to 24. We reproduce that explicitly with the ``_pad`` field, without ``_pack_``,
+  to avoid deprecation and keep the natural 4-byte alignment.
+* The deprecated ``VIDIOC_G_CTRL``/``S_CTRL`` return ``ENOTTY`` on uvcvideo;
+  we use ``VIDIOC_G_EXT_CTRLS``/``S_EXT_CTRLS``.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ BUF_TYPE_VIDEO_CAPTURE_MPLANE = 9
 BUF_TYPE_VIDEO_OUTPUT = 2
 MEMORY_MMAP = 1
 FIELD_NONE = 1
-PIX_FMT_YUV420 = b"YU12"    # I420: Y, potem U i V w ćwiartce rozdzielczości
-PIX_OFF = 4  # offset struct v4l2_pix_format wewnątrz naszego bufora "raw"
+PIX_FMT_YUV420 = b"YU12"    # I420: Y, then U and V at quarter resolution
+PIX_OFF = 4  # offset of struct v4l2_pix_format inside our "raw" buffer
 
 CTRL_FLAG_NEXT_CTRL = 0x80000000
 CTRL_FLAG_DISABLED = 0x00000001
@@ -44,7 +44,7 @@ CTRL_TYPE_CTRL_CLASS = 6
 WHICH_CUR_VAL = 0
 WHICH_DEF_VAL = 0x0F000000
 
-# Kody kontrolek, których używamy w interfejsie
+# Control codes we use in the interface
 CID_BRIGHTNESS = 0x00980900
 CID_CONTRAST = 0x00980901
 CID_SATURATION = 0x00980902
@@ -82,7 +82,7 @@ def _IOW(typ: str, nr: int, size: int) -> int:
 
 
 class V4L2Format(ctypes.Structure):
-    """struct v4l2_format - rozmiar 208, pole pix na offsecie 8 struktury."""
+    """struct v4l2_format - size 208, the pix field at offset 8 of the structure."""
 
     _fields_ = [("type", ctypes.c_uint32), ("raw", ctypes.c_uint8 * 204)]
 
@@ -101,21 +101,21 @@ class _Timeval(ctypes.Structure):
     _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
 
 
-# Znacznik czasu, który odbiega od chwili odbioru o więcej niż tyle sekund, uznajemy
-# za niewiarygodny (sterownik bez znacznika albo inny zegar niż CLOCK_MONOTONIC).
+# A timestamp that differs from the reception moment by more than this many seconds is
+# treated as unreliable (a driver without a timestamp or a clock other than CLOCK_MONOTONIC).
 MAX_TS_SKEW = 1.0
 
 
 def timeval_seconds(tv: _Timeval) -> float:
-    """Znacznik czasu bufora V4L2 w sekundach (uvcvideo: CLOCK_MONOTONIC)."""
+    """The V4L2 buffer timestamp in seconds (uvcvideo: CLOCK_MONOTONIC)."""
     return tv.tv_sec + tv.tv_usec / 1_000_000.0
 
 
 def frame_time(ts: float, now: float, max_skew: float = MAX_TS_SKEW) -> float:
-    """Czas klatki: znacznik z bufora, chyba że jest nieprawdopodobny - wtedy chwila odbioru.
+    """Frame time: the buffer timestamp, unless it is implausible - then the reception moment.
 
-    Tracker przelicza pozycję celu przez kąt głowicy w chwili powstania klatki,
-    więc znacznik z innego zegara (np. sprzed godzin) popsułby każdy pomiar.
+    The tracker converts the target position through the head angle at the moment the frame
+    was captured, so a timestamp from another clock (e.g. from hours ago) would ruin every measurement.
     """
     return ts if 0.0 <= now - ts < max_skew else now
 
@@ -146,7 +146,7 @@ class _TailUnion(ctypes.Union):
 
 
 class V4L2Buffer(ctypes.Structure):
-    """struct v4l2_buffer - rozmiar 88 na 64-bit."""
+    """struct v4l2_buffer - size 88 on 64-bit."""
 
     _fields_ = [
         ("index", ctypes.c_uint32),
@@ -166,19 +166,19 @@ class V4L2Buffer(ctypes.Structure):
 
 
 class V4L2ExtControl(ctypes.Structure):
-    """struct v4l2_ext_control - 20 bajtów, ``value`` na offsecie 12.
+    """struct v4l2_ext_control - 20 bytes, ``value`` at offset 12.
 
-    Kolejność pól prosto z ``/usr/include/linux/videodev2.h``::
+    Field order straight from ``/usr/include/linux/videodev2.h``::
 
         __u32 id;             // 0
         __u32 size;           // 4
         __u32 reserved2[1];   // 8
         union { __s32 value; ... } __attribute__((packed));   // 12
 
-    Unia jest ``packed``, więc całość ma 20 bajtów bez dopełnienia do 24.
-    Odtwarzamy to naturalnym wyrównaniem do 4 - bez ``_pack_``, żeby nie
-    wpadać w deprecjację Pythona. Obsługujemy wyłącznie kontrolki skalarne;
-    kontrolki wskaźnikowe (``string``/``ptr``) wymagałyby unii na offsecie 12.
+    The union is ``packed``, so the whole thing is 20 bytes without padding to 24.
+    We reproduce that with the natural 4-byte alignment - without ``_pack_``, so we do not
+    hit Python deprecation. We only handle scalar controls;
+    pointer controls (``string``/``ptr``) would need the union at offset 12.
     """
 
     _fields_ = [
@@ -249,7 +249,7 @@ assert ctypes.sizeof(V4L2QueryCtrl) == 68, ctypes.sizeof(V4L2QueryCtrl)
 
 @dataclass(frozen=True)
 class Control:
-    """Pojedyncza kontrolka V4L2 wraz z ograniczeniami."""
+    """A single V4L2 control together with its limits."""
 
     id: int
     name: str
@@ -274,7 +274,7 @@ class V4L2Error(RuntimeError):
 
 
 class ControlDevice:
-    """Odczyt i zapis kontrolek. Otwiera własny deskryptor, więc nie zakłóca strumienia."""
+    """Control reads and writes. Opens its own descriptor, so it does not disturb the stream."""
 
     def __init__(self, path: str = "/dev/video0") -> None:
         self.path = path
@@ -293,7 +293,7 @@ class ControlDevice:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # --- informacje o urzadzeniu ---
+    # --- device information ---
 
     def capabilities(self) -> dict:
         cap = V4L2Capability()
@@ -308,10 +308,10 @@ class ControlDevice:
             "is_capture": bool(cap.device_caps & 0x00000001),
         }
 
-    # --- kontrolki ---
+    # --- controls ---
 
     def list_controls(self) -> list[Control]:
-        """Wszystkie kontrolki poza nagłówkami klas."""
+        """All controls except the class headers."""
         if self._cache is None:
             controls: list[Control] = []
             qc = V4L2QueryCtrl()
@@ -354,7 +354,7 @@ class ControlDevice:
         ctrls.controls = ctypes.pointer(ctl)
         with self._lock:
             if self._fd < 0:
-                raise V4L2Error(f"urządzenie {self.path} jest zamknięte")
+                raise V4L2Error(f"device {self.path} is closed")
             try:
                 fcntl.ioctl(self._fd, VIDIOC_G_EXT_CTRLS, ctrls)
             except OSError as e:
@@ -362,7 +362,7 @@ class ControlDevice:
         return ctl.value
 
     def set(self, ctrl_id: int, value: int) -> int:
-        """Ustawia kontrolkę i zwraca wartość potwierdzoną przez urządzenie."""
+        """Sets a control and returns the value confirmed by the device."""
         ctl = V4L2ExtControl()
         ctl.id = ctrl_id
         ctl.size = 0
@@ -373,7 +373,7 @@ class ControlDevice:
         ctrls.controls = ctypes.pointer(ctl)
         with self._lock:
             if self._fd < 0:
-                raise V4L2Error(f"urządzenie {self.path} jest zamknięte")
+                raise V4L2Error(f"device {self.path} is closed")
             try:
                 fcntl.ioctl(self._fd, VIDIOC_S_EXT_CTRLS, ctrls)
             except OSError as e:
@@ -381,7 +381,7 @@ class ControlDevice:
         return ctl.value
 
     def get_many(self, ctrl_ids: list[int]) -> dict[int, int]:
-        """Odczyt wielu kontrolek w jednym wywołaniu."""
+        """Reading many controls in a single call."""
         if not ctrl_ids:
             return {}
         arr = (V4L2ExtControl * len(ctrl_ids))()
@@ -394,17 +394,17 @@ class ControlDevice:
         ctrls.controls = ctypes.cast(arr, ctypes.POINTER(V4L2ExtControl))
         with self._lock:
             if self._fd < 0:
-                raise V4L2Error(f"urządzenie {self.path} jest zamknięte")
+                raise V4L2Error(f"device {self.path} is closed")
             fcntl.ioctl(self._fd, VIDIOC_G_EXT_CTRLS, ctrls)
         return {arr[i].id: arr[i].value for i in range(len(ctrl_ids))}
 
 
 class MjpegStream:
-    """Wątek przechwytujący MJPEG. Udostępnia zawsze ostatnią kompletną klatkę.
+    """The MJPEG grabbing thread. Always exposes the last complete frame.
 
-    Klatki są przekazywane jako surowe bajty JPEG - bez rekompresji. Pierwsze
-    klatki po starcie strumienia bywają urwane (brak znacznika EOI), dlatego
-    odrzucamy niekompletne JPEG-i.
+    Frames are passed as raw JPEG bytes - without recompression. The first
+    frames after the stream starts are sometimes truncated (no EOI marker), so
+    we drop incomplete JPEGs.
     """
 
     def __init__(self, path: str = "/dev/video0", width: int = 1280, height: int = 720,
@@ -437,7 +437,7 @@ class MjpegStream:
         self.actual_width, self.actual_height = struct.unpack_from("=II", fmt.raw, PIX_OFF)
         fourcc = bytes(fmt.raw[PIX_OFF + 8:PIX_OFF + 12]).decode("ascii", "replace")
         if fourcc != "MJPG":
-            raise V4L2Error(f"kamera nie przyjęła formatu MJPG (dostałem {fourcc!r})")
+            raise V4L2Error(f"the camera did not accept the MJPG format (got {fourcc!r})")
 
         req = V4L2Requestbuffers()
         req.count = self.buffers
@@ -445,7 +445,7 @@ class MjpegStream:
         req.memory = MEMORY_MMAP
         fcntl.ioctl(self._fd, VIDIOC_REQBUFS, req)
         if req.count < 2:
-            raise V4L2Error(f"za mało buforów: {req.count}")
+            raise V4L2Error(f"too few buffers: {req.count}")
 
         for i in range(req.count):
             buf = V4L2Buffer()
@@ -494,7 +494,7 @@ class MjpegStream:
                 self._dropped += 1
 
     def frame_timed(self, last_id: int = 0, timeout: float = 2.0) -> tuple[int, bytes | None, float]:
-        """Czeka na klatkę nowszą niż ``last_id``. Zwraca (id, bajty, czas powstania)."""
+        """Waits for a frame newer than ``last_id``. Returns (id, bytes, capture time)."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
@@ -505,7 +505,7 @@ class MjpegStream:
             return self._frame_id, self._frame, self._frame_ts
 
     def frame(self, last_id: int = 0, timeout: float = 2.0) -> tuple[int, bytes | None]:
-        """Czeka na klatkę nowszą niż ``last_id``. Zwraca (id, bajty)."""
+        """Waits for a frame newer than ``last_id``. Returns (id, bytes)."""
         frame_id, data, _ = self.frame_timed(last_id, timeout)
         return frame_id, data
 
@@ -531,7 +531,7 @@ class MjpegStream:
 
 
 def list_video_devices() -> list[str]:
-    """Wszystkie węzły /dev/video* z podsystemu v4l2."""
+    """All /dev/video* nodes from the v4l2 subsystem."""
     base = "/sys/class/video4linux"
     if not os.path.isdir(base):
         return []
@@ -539,7 +539,7 @@ def list_video_devices() -> list[str]:
 
 
 def card_name(path: str) -> str | None:
-    """Nazwa karty urządzenia (VIDIOC_QUERYCAP) albo None, gdy to nie węzeł V4L2."""
+    """The device card name (VIDIOC_QUERYCAP) or None when it is not a V4L2 node."""
     try:
         fd = open_device(path)
     except OSError:
@@ -555,17 +555,17 @@ def card_name(path: str) -> str | None:
 
 
 def find_device_by_card(card: str) -> str | None:
-    """Pierwsze urządzenie o dokładnie takiej nazwie karty."""
+    """The first device with exactly this card name."""
     return next((p for p in list_video_devices() if card_name(p) == card), None)
 
 
 def list_input_devices(exclude_card: str) -> list[str]:
-    """Urządzenia do wyboru jako wejście - bez naszej wirtualnej kamery."""
+    """Devices to choose from as input - without our virtual camera."""
     return [p for p in list_video_devices() if card_name(p) != exclude_card]
 
 
 class OutputDevice:
-    """Zapis surowych klatek na urządzenie wyjściowe V4L2 (v4l2loopback) przez write()."""
+    """Writing raw frames to the V4L2 output device (v4l2loopback) through write()."""
 
     def __init__(self, path: str, size: tuple[int, int], fourcc: bytes = PIX_FMT_YUV420) -> None:
         self.path = path
@@ -583,13 +583,13 @@ class OutputDevice:
             fcntl.ioctl(self._fd, VIDIOC_S_FMT, fmt)
         except OSError as e:
             self.close()
-            raise V4L2Error(f"{self.path}: S_FMT wyjścia: {e.strerror}") from e
+            raise V4L2Error(f"{self.path}: output S_FMT: {e.strerror}") from e
         aw, ah = struct.unpack_from("=II", fmt.raw, PIX_OFF)
         got = bytes(fmt.raw[PIX_OFF + 8:PIX_OFF + 12])
         if (aw, ah) != (w, h) or got != self.fourcc:
             self.close()
-            raise V4L2Error(f"{self.path} nie przyjął {w}x{h} {self.fourcc.decode()} "
-                            f"(dostałem {aw}x{ah} {got!r})")
+            raise V4L2Error(f"{self.path} did not accept {w}x{h} {self.fourcc.decode()} "
+                            f"(got {aw}x{ah} {got!r})")
         return self
 
     def write(self, data: bytes) -> None:

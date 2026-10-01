@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Instalator EagleEye: moduł wirtualnej kamery, środowisko, model, wpis w menu, skrót.
-# Bezpieczny do ponownego uruchomienia.   --dry-run: tylko wypisz kroki, nic nie zmieniaj.
+# EagleEye installer: virtual camera module, environment, model, menu entry, shortcut.
+# Safe to re-run.   --dry-run: only print the steps, change nothing.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,13 +27,13 @@ MEDIA_KEYS=org.gnome.settings-daemon.plugins.media-keys
 step() { printf '\n==> %s\n' "$*"; }
 run() { if (( DRY_RUN )); then printf '    [dry-run] %s\n' "$*"; else "$@"; fi; }
 
-write_root_file() {    # plik treść - przez sudo, tylko gdy treść się zmienia
+write_root_file() {    # file content - through sudo, only when the content changes
     if [[ -f "$1" && "$(cat "$1")" == "$2" ]]; then echo "    $(msg installer.file_unchanged "path=$1")"; return; fi
     if (( DRY_RUN )); then echo "    $(msg installer.dry_write_content "path=$1" "content=$2")"
     else printf '%s\n' "$2" | sudo tee "$1" >/dev/null; echo "    $(msg installer.file_written "path=$1")"; fi
 }
 
-write_user_file() {    # plik treść [tryb]
+write_user_file() {    # file content [mode]
     if [[ -f "$1" && "$(cat "$1")" == "$2" ]]; then echo "    $(msg installer.file_unchanged "path=$1")"; return; fi
     if (( DRY_RUN )); then echo "    $(msg installer.dry_write "path=$1")"; return; fi
     mkdir -p "$(dirname "$1")"
@@ -89,10 +89,10 @@ fi
 step "$(msg installer.step.launcher)"
 write_user_file "$LAUNCHER" "#!/bin/sh
 cd \"$REPO\" && exec \"$REPO/.venv/bin/python\" -m eagleeye.cli \"\$@\"" 755
-# Okno rysuje klient Flet, który na Linuksie przedstawia się zawsze jako com.appveyor.flet:
-# StartupWMClass łączy to okno z ikoną EagleEye w docku. StartupNotify=false, bo okno
-# pochodzi z innego procesu niż uruchomiony (a drugie uruchomienie tylko pokazuje okno) -
-# GNOME czekałby na nie do upływu czasu z kursorem „zajęty”.
+# The window is drawn by the Flet client, which on Linux always presents itself as com.appveyor.flet:
+# StartupWMClass links that window to the EagleEye icon in the dock. StartupNotify=false, because the window
+# comes from a different process than the launcher (and a second start only shows the window) -
+# GNOME would wait for it until the "busy" cursor times out.
 write_user_file "$DESKTOP" "[Desktop Entry]
 Type=Application
 Name=EagleEye
@@ -107,8 +107,8 @@ StartupWMClass=com.appveyor.flet"
 if command -v update-desktop-database >/dev/null 2>&1; then run update-desktop-database -q "$APP_DIR" || true; fi
 
 step "$(msg installer.step.placeholder)"
-# Chrome widzi urządzenie v4l2loopback tylko wtedy, gdy ktoś do niego pisze, a listę kamer
-# buduje przy starcie. Zaślepka pisze planszę od zalogowania i oddaje urządzenie aplikacji.
+# Chrome sees the v4l2loopback device only while someone writes to it, and it builds its camera list
+# at startup. The placeholder writes the slate from login and releases the device to the app.
 write_user_file "$UNIT_DIR/$PLACEHOLDER_UNIT" "[Unit]
 Description=EagleEye: slate shown in the virtual camera when the app is not running
 

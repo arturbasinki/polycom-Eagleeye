@@ -25,7 +25,7 @@ COMMANDS = {"show", "hide", "privacy", "tracking", "profile", "autozoom", "selec
 
 
 def notify(text: str) -> None:
-    """Powiadomienie pulpitu - skrót klawiszowy nie ma terminala, w którym widać błąd."""
+    """Desktop notification - a keyboard shortcut has no terminal to show the error in."""
     try:
         subprocess.Popen(["notify-send", "-a", "EagleEye", "EagleEye", text],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     if instance_running(path):
         send("show", None, path)
         return 0
-    from app import run_app        # Flet i modele ładujemy tylko przy prawdziwym starcie
+    from app import run_app        # Flet and the models are loaded only on a real start
     run_app(args)
     return 0
 

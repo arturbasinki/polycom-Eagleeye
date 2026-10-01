@@ -1,9 +1,9 @@
-"""Wirtualna kamera "EagleEye": obraz aplikacji jako kamera dla Meet, Teams i OBS.
+"""Virtual camera "EagleEye": the application's image as a camera for Meet, Teams and OBS.
 
-Urządzenie daje moduł v4l2loopback (instalator: card_label="EagleEye",
-exclusive_caps=1). Zapisujemy surowe klatki I420 (YU12) 1280x720 w stałym
-tempie 30 fps - odbiorcy widzą równy strumień niezależnie od przestojów kamery.
-Gdy obrazu nie ma (prywatność, kamera odłączona), wysyłamy planszę.
+The device comes from the v4l2loopback module (installer: card_label="EagleEye",
+exclusive_caps=1). We write raw I420 (YU12) 1280x720 frames at a steady
+30 fps - receivers see an even stream regardless of camera pauses.
+When there is no image (privacy, camera disconnected), we write a slate.
 """
 
 from __future__ import annotations
@@ -47,12 +47,12 @@ def i420_size(size: tuple[int, int]) -> int:
 
 
 def bgr_to_i420(bgr: np.ndarray) -> bytes:
-    """BGR (h, w, 3) -> I420: płaszczyzna Y, potem U i V w ćwiartce rozdzielczości.
+    """BGR (h, w, 3) -> I420: the Y plane, then U and V at quarter resolution.
 
-    Pełne zakresy (Y 0-255) - tak odbierają Meet i OBS. ``COLOR_BGR2YUV_I420``
-    w OpenCV 5.0 daje luma w zakresie ograniczonym (16-235), więc płaszczyzny
-    pakujemy sami. Współczynniki BT.601 (``YCrCb``, jak w JPEG), nie ``BGR2YUV``
-    - to analogowe YUV (U 0.492, V 0.877), które przesycało czerwienie o 23%.
+    Full ranges (Y 0-255) - that is what Meet and OBS expect. ``COLOR_BGR2YUV_I420``
+    in OpenCV 5.0 gives luma in the limited range (16-235), so we pack the planes
+    ourselves. BT.601 coefficients (``YCrCb``, as in JPEG), not ``BGR2YUV``
+    - that is analog YUV (U 0.492, V 0.877), which oversaturated reds by 23%.
     """
     y, cr, cb = cv2.split(cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb))
     h, w = bgr.shape[:2]
@@ -62,12 +62,12 @@ def bgr_to_i420(bgr: np.ndarray) -> bytes:
 
 
 def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE) -> bytes | None:
-    """Klatka MJPEG -> I420 bez przechodzenia przez RGB.
+    """MJPEG frame -> I420 without going through RGB.
 
-    JPEG przechowuje obraz jako YCbCr w pełnym zakresie (JFIF), czyli dokładnie
-    to, czego chce wyjście - dekodujemy więc wprost do YCbCr zamiast
-    YCbCr -> RGB -> YUV. Zmierzone na klatce 1080p: 26 ms CPU zamiast 67 ms.
-    Pillow, nie ``cv2.imdecode`` - powód w :func:`decode_mjpeg`.
+    JPEG stores the image as full-range YCbCr (JFIF), which is exactly
+    what the output wants - so we decode straight to YCbCr instead of
+    YCbCr -> RGB -> YUV. Measured on a 1080p frame: 26 ms CPU instead of 67 ms.
+    Pillow, not ``cv2.imdecode`` - the reason is in :func:`decode_mjpeg`.
     """
     try:
         with warnings.catch_warnings():
@@ -94,8 +94,8 @@ def _font(path: Path, px: int):
 
 
 def render_card(title: str, subtitle: str = "", size: tuple[int, int] = OUT_SIZE) -> np.ndarray:
-    """Plansza: ciemne tło, wyśrodkowany tytuł i podtytuł. Pillow, bo czcionki OpenCV
-    nie mają polskich znaków. Zwraca obraz BGR."""
+    """Slate: dark background, centered title and subtitle. Pillow, because OpenCV fonts
+    have no Polish characters. Returns a BGR image."""
     w, h = size
     img = Image.new("RGB", (w, h), CARD_BG_RGB)
     draw = ImageDraw.Draw(img)
@@ -116,21 +116,21 @@ def card_i420(title: str, subtitle: str = "", size: tuple[int, int] = OUT_SIZE) 
 
 
 def open_loopback(card: str = CARD_LABEL, size: tuple[int, int] = OUT_SIZE) -> OutputDevice | None:
-    """Otwiera urządzenie "EagleEye" jako wyjście; None, gdy modułu/urządzenia nie ma."""
+    """Opens the "EagleEye" device as an output; None when the module/device is missing."""
     path = find_device_by_card(card)
     return OutputDevice(path, size).open() if path else None
 
 
 class VirtualCamera:
-    """Wątek zapisujący w stałym tempie bieżącą klatkę wyjściową.
+    """A thread writing the current output frame at a steady rate.
 
-    Klatka wyjściowa: plansza prywatności, ostatnia klatka z kamery (powtarzana,
-    dopóki nie przyjdzie nowa) albo plansza "brak sygnału", gdy nowej klatki nie
-    było dłużej niż ``STALE_S``. Brak urządzenia albo błąd zapisu nie przerywa
-    pracy - kolejna próba po ``RETRY_S``.
+    Output frame: the privacy slate, the last camera frame (repeated until a new
+    one arrives) or the "no signal" slate when there has been no new frame for
+    longer than ``STALE_S``. A missing device or a write error does not stop
+    work - the next attempt comes after ``RETRY_S``.
     """
 
-    RETRY_S = 1.0         # także przejęcie urządzenia od zaślepki przy starcie
+    RETRY_S = 1.0         # also taking the device over from the placeholder at startup
     STALE_S = 1.0
 
     def __init__(self, device_factory: Callable[[], OutputDevice | None] = open_loopback,
@@ -190,7 +190,7 @@ class VirtualCamera:
         return live
 
     def tick(self) -> None:
-        """Jeden zapis: w razie potrzeby otwiera urządzenie i wysyła bieżącą klatkę."""
+        """One write: opens the device if needed and sends the current frame."""
         now = self._clock()
         if self._device is None:
             if now < self._retry_at:
@@ -211,7 +211,7 @@ class VirtualCamera:
             self._device.write(frame)
             self.frames_written += 1
         except OSError as exc:
-            log.warning("zapis wirtualnej kamery: %s", exc)
+            log.warning("virtual camera write: %s", exc)
             self._device.close()
             self._device = None
             self._retry_at = now + self.RETRY_S
@@ -242,6 +242,6 @@ class VirtualCamera:
             next_t += period
             delay = next_t - time.monotonic()
             if delay < -1.0:
-                next_t = time.monotonic()        # po długim przestoju nie nadrabiamy klatek
+                next_t = time.monotonic()        # after a long pause we do not catch up on frames
             elif delay > 0:
                 self._stop.wait(delay)

@@ -1,8 +1,8 @@
-"""Silnik aplikacji: kamera, śledzenie, wirtualna kamera i prywatność - niezależnie od okna.
+"""Application engine: camera, tracking, virtual camera and privacy - independent of the window.
 
-Okno Flet, ikona w zasobniku i polecenia ``eagleeye ...`` są tylko widokami
-i pilotami tego obiektu. Silnik żyje przez cały czas działania procesu, także
-gdy okno jest schowane.
+The Flet window, the tray icon and the ``eagleeye ...`` commands are only views
+and remotes for this object. The engine lives for the whole life of the process, also
+when the window is hidden.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from .vcam import VirtualCamera
 
 log = logging.getLogger("eagleeye")
 
-PARK_TOLERANCE = 1800      # jednostki kontrolek pan/tilt (1/3600°): pół stopnia
+PARK_TOLERANCE = 1800      # pan/tilt control units (1/3600°): half a degree
 
 _ON = {"on", "1"}
 _OFF = {"off", "0"}
@@ -44,7 +44,7 @@ def _switch(arg: str | None, current: bool) -> bool:
 
 
 def device_holders(device: str) -> list[str]:
-    """Nazwy procesów (poza nami), które mają otwarte ``device`` - z /proc/*/fd."""
+    """Process names (other than us) that have ``device`` open - from /proc/*/fd."""
     target = os.path.realpath(device)
     names = []
     for pid in filter(str.isdigit, os.listdir("/proc")):
@@ -56,7 +56,7 @@ def device_holders(device: str) -> list[str]:
                 with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
                     names.append(f.read().strip())
         except OSError:
-            continue                              # proces zniknął albo nie nasz
+            continue                              # the process vanished or is not ours
     return sorted(set(names))
 
 
@@ -66,8 +66,8 @@ def _noop() -> None:
 
 @dataclass
 class UiHooks:
-    """Co okno potrafi zrobić na polecenie z zewnątrz. Domyślnie - bez okna:
-    ``quit`` przerywa główny wątek (KeyboardInterrupt), żeby proces się zamknął."""
+    """What the window can do on an external command. Default - no window:
+    ``quit`` interrupts the main thread (KeyboardInterrupt) so the process closes."""
 
     show: Callable[[], None] = _noop
     hide: Callable[[], None] = _noop
@@ -99,11 +99,11 @@ class Engine:
         self._lock = threading.RLock()
         self._busy_retry_s = busy_retry_s
         self._holders = holders
-        self._busy = False                 # kamera zajęta przez inny program - ponawiamy sami
+        self._busy = False                 # camera busy in another program - we retry ourselves
         self._stop = threading.Event()
         self._retry_thread: threading.Thread | None = None
 
-    # --- cykl życia --------------------------------------------------------
+    # --- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
         self.vcam.start()
@@ -113,16 +113,16 @@ class Engine:
         self._retry_thread.start()
 
     def _retry_loop(self) -> None:
-        """Gdy kamerę trzyma inny program (np. Meet wybrał kamerę fizyczną zamiast
-        „EagleEye”), ponawiamy otwarcie - po przełączeniu w Meet śledzenie wraca samo."""
+        """When another program holds the camera (e.g. Meet picked the physical camera instead
+        of "EagleEye"), we retry opening - after switching in Meet, tracking comes back by itself."""
         while not self._stop.wait(self._busy_retry_s):
             if self._busy and self.tracker is None:
                 self.open_camera()
 
     def shutdown(self, park_wait: float = 3.0) -> None:
-        """Pełne zamknięcie. Przy włączonej prywatności najpierw przywraca pozycję
-        głowicy (inaczej po następnym starcie obiektyw patrzyłby w podłogę) i czeka
-        do ``park_wait`` s, aż model głowicy powie, że dojechała."""
+        """Full shutdown. With privacy on, first restores the head position
+        (otherwise after the next start the lens would point at the floor) and waits
+        up to ``park_wait`` s for the head model to say it has arrived."""
         self._stop.set()
         if self._retry_thread is not None:
             self._retry_thread.join(timeout=2.0)
@@ -154,7 +154,7 @@ class Engine:
         )
 
     def open_camera(self) -> Message | None:
-        """(Ponownie) otwiera kamerę. Zwraca komunikat błędu albo None."""
+        """(Re)opens the camera. Returns an error message or None."""
         with self._lock:
             self.close_camera()
             device = self.settings["device"]
@@ -181,7 +181,7 @@ class Engine:
             self.tracker.start()
             self.vcam.set_source(self.stream)
             self.error, self._busy = None, False
-            log.info("kamera podłączona: %s (%s)", self.caps["card"], self.caps["bus_info"])
+            log.info("camera connected: %s (%s)", self.caps["card"], self.caps["bus_info"])
             return None
 
     def _fail(self, message: Message) -> Message:
@@ -199,7 +199,7 @@ class Engine:
         return message
 
     def close_camera(self) -> None:
-        """Zatrzymuje tracker przed zamknięciem kontrolek - zeruje prędkości na SWOICH kontrolkach."""
+        """Stops the tracker before closing the controls - zeroes velocities on ITS OWN controls."""
         with self._lock:
             self.vcam.set_source(None)
             if self.tracker is not None:
@@ -215,7 +215,7 @@ class Engine:
                 self.controls.close()
                 self.controls = None
 
-    # --- polecenia -----------------------------------------------------------
+    # --- commands ------------------------------------------------------------
 
     def set_privacy(self, on: bool) -> None:
         with self._lock:
@@ -275,8 +275,8 @@ class Engine:
             return active
 
     def _select(self, arg: str | None) -> None:
-        """``wybierz x,y`` - osoba pod punktem klatki (układ ``stan.wybor.klatka``);
-        ``wybierz brak`` - z powrotem tryb automatyczny."""
+        """``select x,y`` - the person at a frame point (coordinates of ``state.selection.frame``);
+        ``select none`` - back to automatic mode."""
         with self._lock:
             if self.tracker is None:
                 raise LocalizedError("engine.error.no_camera")
@@ -312,7 +312,7 @@ class Engine:
 
     @staticmethod
     def _framing(tracker) -> dict | None:
-        """Kadr (strona, plan, yaw, zoom docelowy) albo None, gdy brak kamery."""
+        """Framing (side, shot, yaw, zoom goal) or None when there is no camera."""
         if tracker is None:
             return None
         st = tracker.state
@@ -320,7 +320,7 @@ class Engine:
 
     @staticmethod
     def _selection(tracker) -> dict | None:
-        """Wybór osoby: stan, numer, osoby w kadrze i rozmiar klatki, w którym liczy się ``wybierz x,y``."""
+        """Person selection: state, number, people in frame and the frame size that ``select x,y`` uses."""
         if tracker is None:
             return None
         st = tracker.state
@@ -331,7 +331,7 @@ class Engine:
 
     @staticmethod
     def _performance(tracker) -> dict | None:
-        """Liczby do diagnozy płynności śledzenia (widać je też w oknie)."""
+        """Numbers for diagnosing tracking smoothness (also visible in the window)."""
         if tracker is None:
             return None
         st = tracker.state

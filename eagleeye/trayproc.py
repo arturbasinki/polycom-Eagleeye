@@ -1,7 +1,7 @@
-"""Ikona w zasobniku jako proces potomny silnika (systemowy python3 z GTK).
+"""The tray icon as a child process of the engine (system python3 with GTK).
 
-Jedna ponowna próba po awarii; gdy ikony nie ma, okno zamyka aplikację zamiast
-się chować (inaczej aplikacja byłaby niewidoczna bez drogi powrotu).
+One retry after a crash; when there is no icon, the window closes the app instead of
+hiding (otherwise the app would be invisible with no way back).
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class TrayProcess:
         try:
             self._spawn()
         except OSError as exc:
-            log.warning("ikona w zasobniku nie wystartowała: %s", exc)
+            log.warning("tray icon failed to start: %s", exc)
             return False
         threading.Thread(target=self._watch, name="tray-watch", daemon=True).start()
         return True
@@ -46,7 +46,7 @@ class TrayProcess:
             code = proc.wait()
             if self._stopping.is_set():
                 return
-            log.warning("ikona w zasobniku zakończyła się (kod %s)", code)
+            log.warning("tray icon exited (code %s)", code)
             if self._restarts_left <= 0:
                 return
             self._restarts_left -= 1

@@ -1,9 +1,9 @@
-"""Detekcja osób dla auto-trackingu: model pozy RTMO-s i dekodowanie klatek MJPEG.
+"""Person detection for auto-tracking: the RTMO-s pose model and MJPEG frame decoding.
 
-Jeden model (RTMO-s, OpenMMLab, Apache-2.0) daje dla każdej osoby 17 punktów
-COCO - z nosa, oczu i uszu powstaje punkt głowy (patrz :mod:`eagleeye.perception`).
-Wcześniej były tu dwa modele: twarz (YuNet) i sylwetka (YOLOX); przełączanie
-między nimi przesuwało cel o 9-13°, więc zostały zastąpione (2026-09-23).
+A single model (RTMO-s, OpenMMLab, Apache-2.0) gives 17 COCO keypoints per person -
+the head point is built from the nose, eyes and ears (see :mod:`eagleeye.perception`).
+There used to be two models here: face (YuNet) and body (YOLOX); switching between
+them moved the target by 9-13°, so they were replaced (2026-09-23).
 """
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ import numpy as np
 from PIL import Image
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-# RTMO-s (OpenMMLab, Apache-2.0): jednoetapowa poza wielu osób, 17 punktów COCO.
+# RTMO-s (OpenMMLab, Apache-2.0): one-stage multi-person pose, 17 COCO keypoints.
 RTMO_MODEL = MODELS_DIR / "rtmo-s_body7_640.onnx"
 
 
 @dataclass
 class Detection:
-    """Wykryty obiekt w układzie oryginalnej klatki."""
+    """A detected object in the original frame's coordinate system."""
 
     x: int
     y: int
@@ -33,7 +33,7 @@ class Detection:
     h: int
     score: float
     label: str = ""
-    # Punkty pozy COCO (x, y, pewność) w układzie oryginalnej klatki - tylko z PoseDetector.
+    # COCO pose keypoints (x, y, confidence) in the original frame's coordinates - only from PoseDetector.
     keypoints: tuple[tuple[float, float, float], ...] | None = None
 
     @property
@@ -49,16 +49,16 @@ class Detection:
 
 
 def decode_mjpeg(jpg: bytes) -> np.ndarray | None:
-    """Dekoduje ramkę MJPEG do BGR (albo ``None``, gdy się nie uda).
+    """Decodes an MJPEG frame to BGR (or ``None`` when it fails).
 
-    Celowo używamy Pillow, a nie ``cv2.imdecode``: kamera dokłada kilka bajtów
-    dopełnienia przed znacznikiem EOI i libjpeg w OpenCV wypisuje wtedy
-    ``Corrupt JPEG data: N extraneous bytes`` **na stderr przy każdej klatce**,
-    zaśmiecając terminal (kilkadziesiąt linii na sekundę). Pillow zgłasza to
-    jako ostrzeżenie Pythona, które da się wyciszyć.
+    We deliberately use Pillow, not ``cv2.imdecode``: the camera adds a few bytes
+    of padding before the EOI marker and libjpeg in OpenCV then prints
+    ``Corrupt JPEG data: N extraneous bytes`` **to stderr on every frame**,
+    flooding the terminal (dozens of lines per second). Pillow reports it
+    as a Python warning, which can be silenced.
 
-    Koszt: ~8 ms dla 720p zamiast ~5 ms - przy pętli 8 Hz to 6% budżetu,
-    a wynik jest identyczny co do bajtu (sprawdzone).
+    Cost: ~8 ms for 720p instead of ~5 ms - at an 8 Hz loop that is 6% of the budget,
+    and the result is identical down to the byte (verified).
     """
     try:
         with warnings.catch_warnings():
@@ -71,11 +71,11 @@ def decode_mjpeg(jpg: bytes) -> np.ndarray | None:
 
 
 def decode_mjpeg_scaled(jpg: bytes, reduce: int = 2) -> np.ndarray | None:
-    """Jak :func:`decode_mjpeg`, ale dekoduje od razu w skali ``1/reduce``.
+    """Like :func:`decode_mjpeg`, but decodes straight at the ``1/reduce`` scale.
 
-    Pillow ``draft`` każe libjpeg skalować w dziedzinie DCT, więc połowa pracy
-    odpada. Zmierzone na klatce 1080p z kamery: 3,9 ms zamiast 11,5 ms, bez
-    ostrzeżeń libjpeg (OpenCV sypie nimi przy każdej klatce z tej kamery).
+    Pillow's ``draft`` makes libjpeg scale in the DCT domain, so half the work
+    is skipped. Measured on a 1080p frame from the camera: 3.9 ms instead of 11.5 ms,
+    with no libjpeg warnings (OpenCV spews them on every frame from this camera).
     """
     try:
         with warnings.catch_warnings():
@@ -90,14 +90,14 @@ def decode_mjpeg_scaled(jpg: bytes, reduce: int = 2) -> np.ndarray | None:
 
 
 class PoseDetector:
-    """Poza osób (RTMO-s) - punkty nosa, oczu, uszu, barków... dla każdej osoby.
+    """Person pose (RTMO-s) - nose, eyes, ears, shoulders... keypoints for each person.
 
-    Jeden model daje punkt głowy w każdej pozycji (przodem, profil, stojąc,
-    tyłem), bez przełączania twarz <-> sylwetka, które dawało skoki celu
-    9-13° (spike 2026-09-23). Przetwarzanie jak w pipeline.json modelu:
-    letterbox 640x640 do lewego górnego rogu, wypełnienie 114, BGR, bez
-    normalizacji. NMS jest już w eksporcie, ale ramki wielu osób mogą się
-    nakładać - dokładamy własny, jak w rtmlib.
+    A single model gives the head point in every pose (front, profile, standing,
+    back), without the face <-> body switching that used to make the target jump
+    9-13° (spike 2026-09-23). Processing as in the model's pipeline.json:
+    letterbox 640x640 to the top-left corner, padding 114, BGR, no
+    normalization. NMS is already in the export, but boxes of multiple people can
+    overlap - we add our own, as in rtmlib.
     """
 
     name = "poza"
@@ -120,7 +120,7 @@ class PoseDetector:
         active = self._session.get_providers()
         self.backend = f"ONNX Runtime ({active[0]})"
         self.gpu_error = None if (not prefer_gpu or "CUDAExecutionProvider" in active) \
-            else "CUDAExecutionProvider niedostępny"
+            else "CUDAExecutionProvider unavailable"
         self.score_threshold = score_threshold
         self.nms_threshold = nms_threshold
         self.last_ms = 0.0
@@ -158,13 +158,13 @@ class PoseDetector:
 
 
 def gpu_status() -> dict:
-    """Informacje o GPU do pokazania w interfejsie."""
+    """GPU information to show in the interface."""
     info: dict = {"available": False, "provider": None, "device": None, "note": ""}
     try:
         import onnxruntime as ort
 
         if "CUDAExecutionProvider" not in ort.get_available_providers():
-            info["note"] = "onnxruntime bez CUDAExecutionProvider"
+            info["note"] = "onnxruntime without CUDAExecutionProvider"
             return info
         import subprocess
 

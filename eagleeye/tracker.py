@@ -1,15 +1,15 @@
-"""Wątek auto-trackingu: klatka (z czasem V4L2) -> percepcja -> TrackingCore.
+"""Auto-tracking thread: frame (with its V4L2 timestamp) -> perception -> TrackingCore.
 
-Cienka warstwa nad :class:`eagleeye.core.TrackingCore`. Odpowiada za:
+A thin layer over :class:`eagleeye.core.TrackingCore`. It is responsible for:
 
-* pobieranie klatek i dekodowanie w skali 1/2,
-* bezpieczeństwo: brak klatek > 1 s zatrzymuje ruch; strażnik w wykonawcy
-  zatrzymuje prędkość, gdyby ta pętla się zawiesiła,
-* przejście detektora z GPU na CPU po 5 kolejnych błędach,
-* sterowanie ręczne (tylko przy wyłączonym śledzeniu) - przez tego samego
-  wykonawcę, żeby model głowicy wiedział o każdym ruchu,
-* rejestrator sesji (JSONL) do odtwarzania w symulatorze,
-* migawkę stanu dla interfejsu - niezmienny obiekt podmieniany w całości.
+* fetching frames and decoding them at 1/2 scale,
+* safety: no frames for > 1 s stops movement; a guard in the actuator
+  stops velocity if this loop hangs,
+* switching the detector from GPU to CPU after 5 consecutive errors,
+* manual control (only with tracking off) - through the same
+  actuator, so the head model knows about every move,
+* session recording (JSONL) for replay in the simulator,
+* a state snapshot for the UI - an immutable object replaced as a whole.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from .v4l2 import V4L2Error
 log = logging.getLogger("eagleeye")
 
 NO_FRAME_TIMEOUT = 1.0
-# Stan wyboru osoby po wyczyszczeniu (wyłączone śledzenie, błąd numeracji).
+# Person selection state after clearing (tracking off, numbering error).
 IDENTITY_CLEARED = {"tracks": (), "selection": AUTO, "selected_id": None,
                     "selection_left": 0.0, "selection_note": None}
 DETECTOR_FAILURES_TO_CPU = 5
@@ -74,19 +74,19 @@ class TrackerState:
     pan: float = 0.0
     tilt: float = 0.0
     zones: tuple[float, float] = (0.0, 0.0)          # trigger_pan, trigger_tilt
-    aim: tuple[float, float] = (0.5, GOLDEN)         # punkt docelowy głowy (ułamki kadru)
-    side: str = ""                                   # strona kadru: środek / lewy / prawy
-    shot: str = ""                                   # plan: CU / MCU / MS
-    yaw: float | None = None                         # skręt twarzy celu
-    zoom_goal: float | None = None                   # zoom wyliczony do planu
+    aim: tuple[float, float] = (0.5, GOLDEN)         # target head point (frame fractions)
+    side: str = ""                                   # frame side: center / left / right
+    shot: str = ""                                   # shot: CU / MCU / MS
+    yaw: float | None = None                         # target's face yaw
+    zoom_goal: float | None = None                   # zoom computed for the shot
     auto_zoom: bool = False
     detection_ms: float = 0.0
     loop_ms: float = 0.0
-    frame_age_ms: float = 0.0      # wiek klatki (od stempla bufora V4L2) w chwili jej pobrania
+    frame_age_ms: float = 0.0      # frame age (since the V4L2 buffer timestamp) at the moment it was fetched
     fps: float = 0.0
     moves: int = 0
     detector: str = ""
-    tracks: tuple[TrackInfo, ...] = ()               # osoby z numerami (widoczne i zawieszone)
+    tracks: tuple[TrackInfo, ...] = ()               # people with numbers (visible and suspended)
     selection: str = AUTO                            # auto / selected / suspended
     selected_id: int | None = None
     selection_left: float = 0.0                      # s left to wait for a suspended person
@@ -94,10 +94,10 @@ class TrackerState:
 
 
 class SessionRecorder:
-    """Zapis sesji: pomiary głowy w kątach świata i rozkazy.
+    """Session recording: head measurements in world angles and commands.
 
-    Kąty świata nie zależą od ruchu kamery, więc sesję da się odtworzyć
-    w symulatorze z innymi nastawami (tools/replay_session.py).
+    World angles do not depend on camera movement, so the session can be replayed
+    in the simulator with different settings (tools/replay_session.py).
     """
 
     def __init__(self, path: Path) -> None:
@@ -154,11 +154,11 @@ class Tracker:
         self._extra_note = None
         self._people = PersonTracker()
         self._selection = TargetSelection(settings.select_hold_s)
-        self._sel_lock = threading.Lock()       # osobno od _lock: wybór klika wątek UI, liczy wątek pętli
+        self._sel_lock = threading.Lock()       # separate from _lock: the UI thread clicks the selection, the loop thread computes it
         self._identity_view: dict = {}
         self.core.actuator.sync_from_device(time.monotonic())
 
-    # --- cykl życia ------------------------------------------------------
+    # --- lifecycle ------------------------------------------------------
 
     def start(self) -> None:
         self.core.actuator.start_watchdog()
@@ -187,7 +187,7 @@ class Tracker:
         with self._lock:
             t = time.monotonic()
             if on and not self._enabled:
-                self.core.actuator.refresh_zoom()       # zoom mógł zmienić suwak albo preset
+                self.core.actuator.refresh_zoom()       # the zoom may have changed via the slider or a preset
                 self.core.filter.reset()
                 self._reset_identity()
                 self.core.director.start_search(t, self.core.actuator.zoom_value)
@@ -202,26 +202,26 @@ class Tracker:
         self._publish(enabled=on, message=msg("tracker.on") if on else msg("tracker.off"))
 
     def set_record(self, on: bool, directory: Path | None = None) -> None:
-        """Włącza/wyłącza zapis sesji od razu - także w trakcie śledzenia."""
+        """Turns session recording on/off immediately - also while tracking."""
         with self._lock:
             self.settings.record = bool(on)
             if on and self._enabled and self._recorder is None:
                 self._recorder = SessionRecorder.create(directory)
-                log.info("zapis sesji: %s", self._recorder.path)
+                log.info("session recording: %s", self._recorder.path)
             elif not on:
                 self._close_recorder()
 
     def _close_recorder(self) -> None:
         if self._recorder is not None:
             self._recorder.close()
-            log.info("zapis sesji: %s", self._recorder.path)
+            log.info("session recording: %s", self._recorder.path)
             self._recorder = None
 
-    # --- polecenia z interfejsu --------------------------------------------
+    # --- commands from the UI --------------------------------------------
 
     def select_at(self, x: float, y: float) -> bool:
-        """Wybiera do śledzenia osobę widoczną w punkcie klatki (piksele ``state.frame_size``).
-        ``False``, gdy nikogo tam nie ma - wtedy wybór się nie zmienia."""
+        """Selects for tracking the person visible at a frame point (pixels of ``state.frame_size``).
+        ``False`` when there is nobody there - then the selection does not change."""
         with self._sel_lock:
             tid = track_at(self._state.tracks, x, y)
             if tid is None:
@@ -230,12 +230,12 @@ class Tracker:
             return True
 
     def clear_selection(self) -> None:
-        """Wraca do trybu automatycznego (największa osoba)."""
+        """Returns to automatic mode (the largest person)."""
         with self._sel_lock:
             self._selection.clear()
 
     def set_select_hold(self, seconds: float) -> None:
-        """Ile sekund kamera czeka na wybraną osobę, która zniknęła, zanim wróci do trybu automatycznego."""
+        """How many seconds the camera waits for a selected person who vanished before returning to automatic mode."""
         with self._sel_lock:
             self.settings.select_hold_s = float(seconds)
             self._selection.hold_s = float(seconds)
@@ -266,16 +266,16 @@ class Tracker:
             return home
 
     def position(self) -> tuple[float, float]:
-        """Gdzie według modelu głowicy patrzy teraz kamera (pan, tilt)."""
+        """Where the camera is looking now according to the head model (pan, tilt)."""
         with self._lock:
             return self.core.head.angles(time.monotonic())
 
     def tilt_min(self) -> float:
-        """Dolna granica tiltu z kontrolki kamery - obiektyw maksymalnie w dół."""
+        """Lower tilt limit from the camera control - the lens pointing as far down as possible."""
         return self.core.director.limits.tilt_min
 
     def move_to(self, pan: float | None = None, tilt: float | None = None) -> bool:
-        """Ruch ręczny. Odrzucony (False), gdy działa śledzenie."""
+        """Manual move. Rejected (False) while tracking is on."""
         with self._lock:
             if self._enabled:
                 return False
@@ -302,7 +302,7 @@ class Tracker:
             self.settings.auto_zoom = bool(on)
             self.core.director.auto_zoom = bool(on)
             if on:
-                self.core.actuator.refresh_zoom()   # zoom mógł zmienić suwak albo preset
+                self.core.actuator.refresh_zoom()   # the zoom may have changed via the slider or a preset
             self._publish(auto_zoom=bool(on))
 
     @property
@@ -313,13 +313,13 @@ class Tracker:
     def state(self) -> TrackerState:
         return self._state
 
-    # --- pętla -----------------------------------------------------------
+    # --- loop -----------------------------------------------------------
 
     def _publish(self, **changes) -> None:
         self._state = replace(self._state, **changes)
 
     def _framing_row(self) -> dict:
-        """Pola kadru do zapisu sesji (odtwarzacz symulatora, tools/framing_stats.py)."""
+        """Framing fields for the session log (simulator replay, tools/framing_stats.py)."""
         est = self.core.last_estimate
         return {"yaw": None if est is None or est.yaw is None else round(est.yaw, 3),
                 "head_scale": None if est is None or est.head_scale is None else round(est.head_scale, 1),
@@ -336,12 +336,12 @@ class Tracker:
         return self.core.view(w, h).world_to_pixel(est.pan, est.tilt, *self.core.head.angles(now))
 
     def _apply_identity(self, frame, ts: float, dets, obs, w: int, h: int):
-        """Numeruje osoby (eagleeye.identity) i, gdy użytkownik kogoś wybrał, podmienia cel na
-        jego wykrycie albo na ``None`` (zawieszona: kamera stoi, nie przechodzi na innego)."""
+        """Numbers people (eagleeye.identity) and, when the user selected someone, replaces the target
+        with their detection or with ``None`` (suspended: the camera stays, does not move to someone else)."""
         if self.core.actuator.zoom_model.moving(ts):
-            # Jak w core.step: w trakcie jazdy zoomu pole widzenia z kontrolki nie jest prawdziwe,
-            # a błąd skaluje położenia i rozmiary - numeracji nie ruszamy, a przy wybranej osobie
-            # kamera i tak nie dostaje pomiaru (nigdy nie oddajemy celu innej osobie).
+            # As in core.step: while the zoom is moving, the field of view from the control is not real,
+            # and the error scales positions and sizes - we leave numbering alone, and with a selected person
+            # the camera gets no measurement anyway (we never give the target to another person).
             with self._sel_lock:
                 return None if self._selection.state != AUTO else obs
         try:
@@ -364,8 +364,8 @@ class Tracker:
                     "selected_id": sel.track_id, "selection_left": sel.remaining(ts),
                     "selection_note": sel.event}
         except Exception:
-            # Błąd numeracji nie może zablokować kamery na "duchu": wracamy do trybu automatycznego.
-            log.exception("błąd numeracji osób - wybór wyczyszczony")
+            # A numbering error must not lock the camera on a "ghost": we return to automatic mode.
+            log.exception("person numbering error - selection cleared")
             with self._sel_lock:
                 self._people.reset()
                 self._selection.clear()
@@ -383,7 +383,7 @@ class Tracker:
             return obs, dets, self._perception.last_ms
         except Exception as exc:
             self._det_errors += 1
-            log.warning("błąd detektora (%d z rzędu): %s", self._det_errors, exc)
+            log.warning("detector error (%d in a row): %s", self._det_errors, exc)
             if self._det_errors >= DETECTOR_FAILURES_TO_CPU and self.settings.use_gpu:
                 self.settings.use_gpu = False
                 self._perception = None
@@ -426,12 +426,12 @@ class Tracker:
                 with self._lock:
                     if now - zoom_checked > ZOOM_REFRESH:
                         zoom_checked = now
-                        # Ręcznie zmieniony zoom (pierścień, suwak) trwale wyłącza zoom
-                        # automatyczny - model głowicy i tak wie, gdzie jest optyka.
+                        # A manually changed zoom (ring, slider) permanently disables automatic
+                        # zoom - the head model knows where the optics are anyway.
                         if self.core.actuator.refresh_zoom(now) and self.core.director.auto_zoom:
                             self.core.director.auto_zoom = False
                             self.settings.auto_zoom = False
-                            log.info("zoom zmieniony ręcznie - zoom automatyczny wyłączony")
+                            log.info("zoom changed manually - automatic zoom turned off")
                     cmds = self.core.step(time.monotonic(), obs, w, h)
                     if self._recorder is not None:
                         self._recorder.write(now, self.core.last_world, cmds,
@@ -441,10 +441,10 @@ class Tracker:
                 self._publish(enabled=False, message=msg("tracker.camera_lost", error=str(exc)))
                 continue
             except Exception as exc:
-                # Błąd w logice śledzenia nie może po cichu zabić wątku: interfejs
-                # pokazywałby "śledzenie", a nic by się nie działo. Zatrzymujemy ruch,
-                # wyłączamy śledzenie i zostawiamy wątek - da się włączyć ponownie.
-                log.exception("błąd śledzenia")
+                # An error in the tracking logic must not silently kill the thread: the UI
+                # would show "tracking" while nothing happened. We stop movement,
+                # turn tracking off and leave the thread - it can be enabled again.
+                log.exception("tracking error")
                 with self._lock:
                     self._enabled = False
                     try:

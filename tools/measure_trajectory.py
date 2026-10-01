@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Identyfikacja ruchu absolutnego pan i tilt: pełna trajektoria, nie tylko start i koniec.
+"""Identifying pan and tilt absolute movement: the full trajectory, not just start and end.
 
-``measure_dynamics.py`` mierzy tylko pan i tylko początek/koniec ruchu, a model głowicy
-używa tych samych parametrów dla tiltu. Model jest potrzebny w *każdej* chwili ruchu:
-kąt świata celu = kąt kamery w chwili klatki (z modelu) + przesunięcie w pikselach.
-Błąd modelu w trakcie jazdy trafia wprost do pomiaru celu - pomiar "ucieka" w kierunku
-jazdy, reżyser widzi cel, który się przesuwa, i dokłada ruch (dojazd na raty, oscylacja).
+``measure_dynamics.py`` measures only pan and only the start/end of the movement, while the head model
+uses the same parameters for tilt. The model is needed at *every* moment of the movement:
+the target world angle = camera angle at the frame moment (from the model) + the shift in pixels.
+A model error while moving goes straight into the target measurement - the measurement "runs away" in the
+direction of travel, the director sees a target that is moving and adds movement (catch-up in steps, oscillation).
 
-Narzędzie dla każdej osi i kilku odległości nagrywa kąt z korelacji fazowej kolejnych
-klatek (czas = znacznik bufora V4L2, ten sam, którego używa tracker), a potem dopasowuje
-parametry modelu (opóźnienie, czas bazowy, prędkość, kształt ``nu``) metodą najmniejszych
-kwadratów na całych przebiegach. Wypisuje błąd modelu obecnego i dopasowanego.
+For every axis and several distances the tool records the angle from phase correlation of consecutive
+frames (time = V4L2 buffer timestamp, the same one the tracker uses), and then fits the
+model parameters (latency, base time, speed, shape ``nu``) by least
+squares over whole runs. It prints the error of the current and the fitted model.
 
-    .venv/bin/python tools/measure_trajectory.py           # tylko wypisz
-    .venv/bin/python tools/measure_trajectory.py --save    # zapisz do config.json
+    .venv/bin/python tools/measure_trajectory.py           # print only
+    .venv/bin/python tools/measure_trajectory.py --save    # save to config.json
 
-Kamera musi być wolna (aplikacja zamknięta), kadr z teksturą. Pozycja i zoom są przywracane.
+The camera must be free (application closed), the frame must have texture. The position and zoom are restored.
 
-Kalibracja tej kamery jest w kodzie (wartości domyślne ``head_model.Dynamics``) i nie
-znika razem z ``config.json``. ``--save`` zapisuje wynik jako nadpisanie w ``config.json``
-(np. dla innego egzemplarza); nową kalibrację tego egzemplarza wpisz do ``Dynamics``.
+The calibration of this camera is in the code (``head_model.Dynamics`` defaults) and does not
+disappear with ``config.json``. ``--save`` writes the result as an override in ``config.json``
+(e.g. for another unit); write the new calibration of this unit into ``Dynamics``.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class Probe:
                 return ts, np.float32(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
 
     def record(self, axis: str, seconds: float, action) -> tuple[float, np.ndarray, np.ndarray]:
-        """(chwila rozkazu, czasy klatek, skumulowany kąt osi [arcsec, bez znaku kierunku])."""
+        """(command moment, frame times, accumulated axis angle [arcsec, without direction sign])."""
         ts, prev = self._gray()
         samples = [(ts, 0.0)]
         total = 0.0
@@ -97,9 +97,9 @@ def model_path(tau: np.ndarray, d: float, lat: float, base: float, speed: float,
 
 
 def rms(runs, lat, base, speed, nu) -> float:
-    """Błąd RMS [arcsec] kształtu w czasie. Przebieg jest normalizowany do kąta końcowego:
-    korelacja fazowa całej klatki zawyża kąt o ~10% (dystorsja obiektywu), a tu liczy się
-    *kiedy* głowica jest w danej części drogi - to decyduje o błędzie pomiaru celu w ruchu."""
+    """RMS error [arcsec] of the shape over time. The run is normalized to the final angle:
+    phase correlation of the whole frame overstates the angle by ~10% (lens distortion), and what
+    matters here is *when* the head is at a given part of the path - that decides the target measurement error while moving."""
     err = np.concatenate([(x - model_path(tau, d, lat, base, speed, nu) / d) * d for d, tau, x in runs])
     return float(np.sqrt(np.mean(err ** 2)))
 
@@ -107,7 +107,7 @@ def rms(runs, lat, base, speed, nu) -> float:
 def fit(runs, start: Dynamics) -> tuple[dict, float]:
     best = (rms(runs, start.abs_latency, start.abs_base, start.abs_speed, start.abs_nu),
             start.abs_latency, start.abs_base, start.abs_speed, start.abs_nu)
-    # Siatka zgrubna, potem zawężanie wokół najlepszego punktu.
+    # Coarse grid, then refinement around the best point.
     grids = {
         "lat": np.linspace(0.0, 0.4, 9), "base": np.linspace(0.1, 1.0, 10),
         "speed": np.array([deg(v) for v in (20, 30, 45, 60, 80, 110, 150)]),
@@ -141,16 +141,16 @@ def measure_axis(probe: Probe, ctl: ControlDevice, axis: str, start: Dynamics) -
                 continue
             fired, t, x = probe.record(axis, RECORD_S, lambda tg=int(home + d): ctl.set(cid, tg))
             tau = t - fired
-            x = x - np.interp(0.0, tau, x)          # kąt względem chwili rozkazu
+            x = x - np.interp(0.0, tau, x)          # angle relative to the command moment
             moved = x[-1]
             runs.append((float(abs(d)), tau, x * (1 if d > 0 else -1) * np.sign(moved or 1) * np.sign(d)))
-            print(f"  {axis} {d / 3600:+5.0f}°: zmierzony kąt {abs(moved) / 3600:5.1f}°  "
-                  f"(skala {abs(moved) / abs(d):.3f})")
+            print(f"  {axis} {d / 3600:+5.0f}°: measured angle {abs(moved) / 3600:5.1f}°  "
+                  f"(scale {abs(moved) / abs(d):.3f})")
             ctl.set(cid, int(home))
             time.sleep(2.2)
-    # Kierunek osi obrazu nie ma znaczenia - liczymy postęp w stronę celu, znormalizowany do
-    # końca. Krótkie ruchy (2°) i przebiegi z nieudaną korelacją (koniec poza 0,8-1,4 zadanego)
-    # pomijamy - szum korelacji jest tam większy niż sygnał.
+    # The image axis direction does not matter - we measure progress toward the target, normalized to
+    # the end. Short moves (2°) and runs with a failed correlation (end outside 0.8-1.4 of the commanded)
+    # are skipped - the correlation noise there is larger than the signal.
     clean = []
     for d, tau, x in runs:
         x = np.abs(x)
@@ -160,9 +160,9 @@ def measure_axis(probe: Probe, ctl: ControlDevice, axis: str, start: Dynamics) -
     runs = clean
     now = rms(runs, start.abs_latency, start.abs_base, start.abs_speed, start.abs_nu)
     params, err = fit(runs, start)
-    print(f"  {axis}: błąd RMS modelu obecnego {now / 3600:.2f}°, dopasowanego {err / 3600:.2f}°")
-    print(f"  {axis}: opóźnienie {params['abs_latency']:.3f} s, baza {params['abs_base']:.3f} s, "
-          f"prędkość {params['abs_speed'] / 3600:.1f}°/s, nu {params['abs_nu']:.2f}")
+    print(f"  {axis}: RMS error of the current model {now / 3600:.2f}°, fitted {err / 3600:.2f}°")
+    print(f"  {axis}: latency {params['abs_latency']:.3f} s, base {params['abs_base']:.3f} s, "
+          f"speed {params['abs_speed'] / 3600:.1f}°/s, nu {params['abs_nu']:.2f}")
     return params, runs
 
 
@@ -170,7 +170,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", default="/dev/video0")
     parser.add_argument("--save", action="store_true")
-    parser.add_argument("--dump", type=Path, help="zapisz surowe przebiegi (JSON)")
+    parser.add_argument("--dump", type=Path, help="save the raw runs (JSON)")
     args = parser.parse_args()
 
     store = Store()
@@ -194,7 +194,7 @@ def main() -> int:
         time.sleep(2.0)
         probe = Probe(stream)
         for axis in ("pan", "tilt"):
-            print(f"ruch absolutny ({axis}):")
+            print(f"absolute movement ({axis}):")
             result[axis], runs = measure_axis(probe, ctl, axis, start)
             dump[axis] = [(d, tau.tolist(), x.tolist()) for d, tau, x in runs]
     finally:
@@ -205,13 +205,13 @@ def main() -> int:
     if args.dump:
         args.dump.write_text(json.dumps(dump))
     if args.save:
-        # Zapisujemy tylko tilt: pan ma parametry z measure_dynamics.py potwierdzone w odbiorze,
-        # a dopasowanie tutaj poprawia je nieznacznie (0,41° -> 0,33° RMS, 2026-09-26).
+        # We save only tilt: pan has parameters from measure_dynamics.py confirmed in acceptance,
+        # and fitting here improves them only slightly (0.41° -> 0.33° RMS, 2026-09-26).
         dyn = dict(store.settings.get("dynamics") or {})
         dyn.update({"tilt_" + k: v for k, v in result["tilt"].items()})
         store.settings["dynamics"] = dyn
         store.save()
-        print("zapisano w config.json")
+        print("saved in config.json")
     return 0
 
 

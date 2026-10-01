@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Sesja odbiorcza na żywo: śledzenie z komendami głosowymi i zapisem sesji.
+"""Live acceptance session: tracking with voice cues and session recording.
 
-Komendy są mówione (spd-say) i pokazywane jako powiadomienie, bo osoba przed
-kamerą nie patrzy w terminal. Sesja trafia do captures/sessions/*.jsonl -
-miary liczy tools/replay_session.py.
+The cues are spoken (spd-say) and shown as a notification, because the person in
+front of the camera is not looking at the terminal. The session goes to captures/sessions/*.jsonl -
+its measures are computed by tools/replay_session.py.
 
-Przerwanie (Ctrl+C, SIGTERM) zawsze kończy się zatrzymaniem ruchu i powrotem
-kamery na pozycję startową.
+An interrupt (Ctrl+C, SIGTERM) always stops movement and returns the camera
+to its start position.
 
     .venv/bin/python tools/live_session.py --profile presentation --script presentation
 """
@@ -32,12 +32,12 @@ from eagleeye.v4l2 import (CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_TILT_ABSOLUTE,  
 
 START_DELAY = 5.0
 SCRIPTS = {
-    "presentation": [(0, "start za pięć sekund"), (5, "stój"), (20, "idź w lewo"), (27, "stój"),
-                    (35, "idź w prawo"), (45, "stój"), (53, "idź w lewo szybko"), (59, "stój"),
-                    (67, "wróć na środek"), (74, "stój"), (82, "wyjdź z kadru"), (115, "wróć"),
-                    (140, "koniec")],
-    "talk": [(0, "start za pięć sekund"), (5, "siedź normalnie"), (65, "odchyl się w bok"),
-                (75, "wróć"), (95, "wstań"), (105, "usiądź"), (125, "koniec")],
+    "presentation": [(0, "start za pięć sekund"), (5, "stój"), (20, "idź w lewo"), (27, "stój"),  # polish: deliberate
+                    (35, "idź w prawo"), (45, "stój"), (53, "idź w lewo szybko"), (59, "stój"),  # polish: deliberate
+                    (67, "wróć na środek"), (74, "stój"), (82, "wyjdź z kadru"), (115, "wróć"),  # polish: deliberate
+                    (140, "koniec")],  # polish: deliberate
+    "talk": [(0, "start za pięć sekund"), (5, "siedź normalnie"), (65, "odchyl się w bok"),  # polish: deliberate
+                (75, "wróć"), (95, "wstań"), (105, "usiądź"), (125, "koniec")],  # polish: deliberate
 }
 
 
@@ -50,7 +50,7 @@ def _raise_stop(signum, frame):
 
 
 def say(text: str) -> None:
-    for cmd in (["notify-send", "-t", "4000", "EagleEye", text], ["spd-say", "-l", "pl", "-r", "10", text]):
+    for cmd in (["notify-send", "-t", "4000", "EagleEye", text], ["spd-say", "-l", "pl", "-r", "10", text]):  # polish: deliberate
         try:
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
@@ -61,7 +61,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", default="talk")
     parser.add_argument("--script", default="talk", choices=sorted(SCRIPTS))
-    parser.add_argument("--start-pan", type=float, default=35.0, help="stopnie; od tego miejsca startuje skan")
+    parser.add_argument("--start-pan", type=float, default=35.0, help="degrees; the scan starts from this position")
     parser.add_argument("--device", default="/dev/video0")
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)
@@ -87,7 +87,7 @@ def main() -> int:
                 _, text = cues.pop(0)
                 say(text)
                 print(f"{t:6.1f}s >>> {text.upper()}", flush=True)
-                if text == "koniec":
+                if text == "koniec":  # polish: deliberate
                     raise Stop()
             if not tracker.enabled and t >= START_DELAY:
                 tracker.set_enabled(True)
@@ -96,7 +96,7 @@ def main() -> int:
             if tracker.enabled and key != last:
                 target = s.target.source if s.target else "-"
                 print(f"{t:6.1f}s {s.mode:9s} pan:{s.pan_state:9s} tilt:{s.tilt_state:9s} "
-                      f"głowica {s.pan / 3600:+6.1f}°/{s.tilt / 3600:+5.1f}° cel:{target:5s} ruchów:{s.moves}",
+                      f"head {s.pan / 3600:+6.1f}°/{s.tilt / 3600:+5.1f}° target:{target:5s} moves:{s.moves}",
                       flush=True)
                 last = key
             time.sleep(0.1)
@@ -106,13 +106,13 @@ def main() -> int:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         tracker.set_enabled(False)
-        print(f"ruchów łącznie: {tracker.state.moves}, prędkość po wyłączeniu: {ctl.get(CID_PAN_SPEED)}", flush=True)
+        print(f"moves total: {tracker.state.moves}, speed after disabling: {ctl.get(CID_PAN_SPEED)}", flush=True)
         tracker.move_to(pan=pan0, tilt=tilt0)
         time.sleep(4.0)
         tracker.stop()
         stream.stop()
         ctl.close()
-        print("kamera wróciła na pozycję startową", flush=True)
+        print("camera returned to the start position", flush=True)
     return 0
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Odinstalowanie EagleEye. Domyślnie zostawia pakiety systemowe i venv.
-#   --all  usuwa też venv i pakiet v4l2loopback-dkms
-#   --dry-run   tylko wypisz kroki
+# Uninstalling EagleEye. By default it leaves the system packages and the venv.
+#   --all  also removes the venv and the v4l2loopback-dkms package
+#   --dry-run   only print the steps
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

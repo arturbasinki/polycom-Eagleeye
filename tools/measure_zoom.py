@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Pomiar dynamiki zoomu -> pola zoom_* w ``Dynamics`` (config.json).
+"""Measuring zoom dynamics -> the zoom_* fields in ``Dynamics`` (config.json).
 
-Ruch optyki wykrywamy różnicą kolejnych klatek (czasy z bufora V4L2): powyżej progu
-szumu obraz się zmienia, czyli zoom jedzie. Z kilku skoków liczymy:
+We detect the optics movement by the difference of consecutive frames (timestamps from the V4L2
+buffer): above the noise threshold the image changes, so the zoom is moving. From several jumps we compute:
 
-* zoom_latency - od zapisu kontrolki do pierwszej zmienionej klatki (mediana),
-* zoom_base, zoom_speed - prosta: czas jazdy = base + |skok| / speed,
-* czy zoom i pan mogą jechać razem: czas do bezruchu dla pan, dla zoomu i dla obu
-  naraz, oraz czy po ruchu wspólnym obraz wrócił dokładnie do klatki odniesienia.
+* zoom_latency - from the control write to the first changed frame (median),
+* zoom_base, zoom_speed - a line: travel time = base + |jump| / speed,
+* whether zoom and pan can move together: time to rest for pan, for zoom and for both
+  at once, and whether after the combined move the image returned exactly to the reference frame.
 
-Kamera musi być wolna (zamknij aplikację), a kadr powinien mieć teksturę. Pozycja
-i zoom są przywracane na końcu - także po Ctrl+C i SIGTERM.
+The camera must be free (close the application), and the frame should have texture. The position
+and zoom are restored at the end - also after Ctrl+C and SIGTERM.
 
-    .venv/bin/python tools/measure_zoom.py           # tylko wypisz
-    .venv/bin/python tools/measure_zoom.py --save    # zapisz do config.json
+    .venv/bin/python tools/measure_zoom.py           # print only
+    .venv/bin/python tools/measure_zoom.py --save    # save to config.json
 
-Kalibracja tej kamery jest w kodzie (wartości domyślne ``head_model.Dynamics``) i nie
-znika razem z ``config.json``. ``--save`` zapisuje wynik jako nadpisanie w ``config.json``
-(np. dla innego egzemplarza); nową kalibrację tego egzemplarza wpisz do ``Dynamics``.
+The calibration of this camera is in the code (``head_model.Dynamics`` defaults) and does not
+disappear with ``config.json``. ``--save`` writes the result as an override in ``config.json``
+(e.g. for another unit); write the new calibration of this unit into ``Dynamics``.
 """
 
 from __future__ import annotations
@@ -41,11 +41,11 @@ from eagleeye.v4l2 import CID_PAN_ABSOLUTE, CID_ZOOM_ABSOLUTE, ControlDevice, Mj
 
 W, H = 640, 360
 JUMPS = ((0, 2400), (2400, 4000), (4000, 2400), (2400, 0), (800, 1600), (1600, 800))
-SETTLE = 1.5            # s bez zmian obrazu = koniec ruchu
+SETTLE = 1.5            # s without an image change = end of movement
 TIMEOUT = 8.0
 PAN_STEP = deg(10)
-TOGETHER_SLACK = 0.3    # ruch wspólny może trwać najwyżej tyle dłużej niż dłuższy z pojedynczych
-SAME_FRAME_PX = 3.0     # przesunięcie względem odniesienia, poniżej którego to "ta sama klatka"
+TOGETHER_SLACK = 0.3    # a combined move may last at most this much longer than the longer single one
+SAME_FRAME_PX = 3.0     # shift relative to the reference, below which it is "the same frame"
 
 
 class Watcher:
@@ -62,7 +62,7 @@ class Watcher:
                 return ts, cv2.GaussianBlur(small, (5, 5), 0).astype(np.float32)
 
     def threshold(self, seconds: float = 1.5) -> float:
-        """Próg ruchu: 4x mediana różnicy kolejnych klatek w bezruchu."""
+        """Movement threshold: 4x the median difference of consecutive frames at rest."""
         _, prev = self.gray()
         diffs = []
         end = time.monotonic() + seconds
@@ -73,7 +73,7 @@ class Watcher:
         return 4.0 * max(statistics.median(diffs), 0.2)
 
     def motion(self, action, thr: float) -> tuple[float | None, float | None]:
-        """Wykonuje ``action``; zwraca (start ruchu, koniec ruchu) w s od chwili zapisu."""
+        """Performs ``action``; returns (movement start, movement end) in s from the write moment."""
         _, prev = self.gray()
         t0 = time.monotonic()
         action()
@@ -98,7 +98,7 @@ def settle(ctl: ControlDevice, cid: int, value: int) -> None:
 
 
 def fit(rows: list[tuple[int, float, float]]) -> dict:
-    """rows: (skok, start, koniec) -> zoom_latency, zoom_base, zoom_speed."""
+    """rows: (jump, start, end) -> zoom_latency, zoom_base, zoom_speed."""
     latency = statistics.median(r[1] for r in rows)
     xs = np.array([abs(r[0]) for r in rows], float)
     ys = np.array([r[2] - latency for r in rows], float)
@@ -110,7 +110,7 @@ def fit(rows: list[tuple[int, float, float]]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", default="/dev/video0")
-    parser.add_argument("--save", action="store_true", help="zapisz wynik do config.json")
+    parser.add_argument("--save", action="store_true", help="save the result to config.json")
     args = parser.parse_args()
 
     def interrupted(*_):
@@ -125,17 +125,17 @@ def main() -> int:
         w = Watcher(stream)
         settle(ctl, CID_ZOOM_ABSOLUTE, 0)
         thr = w.threshold()
-        print(f"próg ruchu: {thr:.2f}")
+        print(f"movement threshold: {thr:.2f}")
 
         rows = []
         for a, b in JUMPS:
             settle(ctl, CID_ZOOM_ABSOLUTE, a)
             first, last = w.motion(lambda b=b: ctl.set(CID_ZOOM_ABSOLUTE, b), thr)
-            print(f"zoom {a:5d} -> {b:5d}: start {first}, koniec {last}")
+            print(f"zoom {a:5d} -> {b:5d}: start {first}, end {last}")
             if first is not None and last is not None:
                 rows.append((b - a, first, last))
         result = fit(rows) if len(rows) >= 3 else {}
-        print("wynik:", result or "za mało udanych pomiarów")
+        print("result:", result or "too few successful measurements")
 
         settle(ctl, CID_ZOOM_ABSOLUTE, 0)
         _, reference = w.gray()
@@ -151,20 +151,20 @@ def main() -> int:
         (dx, dy), _ = cv2.phaseCorrelate(reference, after)
         same = float(np.hypot(dx, dy)) < SAME_FRAME_PX
         fast = None not in (t_pan, t_zoom, t_both) and t_both <= max(t_pan, t_zoom) + TOGETHER_SLACK
-        print(f"pan {t_pan} s, zoom {t_zoom} s, razem {t_both} s, "
-              f"przesunięcie po ruchu wspólnym {np.hypot(dx, dy):.1f} px")
-        print("ZOOM_WITH_PAN_TILT = True  (zoom i pan/tilt mogą jechać jednocześnie)" if fast and same
-              else "ZOOM_WITH_PAN_TILT = False (zoom i pan/tilt kolejno)")
+        print(f"pan {t_pan} s, zoom {t_zoom} s, together {t_both} s, "
+              f"shift after the combined move {np.hypot(dx, dy):.1f} px")
+        print("ZOOM_WITH_PAN_TILT = True  (zoom and pan/tilt can move at the same time)" if fast and same
+              else "ZOOM_WITH_PAN_TILT = False (zoom and pan/tilt in sequence)")
 
         if args.save and result:
             store = Store()
             store.settings["dynamics"].update(result)
             store.save()
-            print("zapisano do config.json")
+            print("saved to config.json")
     except KeyboardInterrupt:
-        print("przerwano - przywracam pozycję i zoom")
+        print("interrupted - restoring the position and zoom")
     finally:
-        ctl.set(CID_PAN_ABSOLUTE, pan0 + 1)     # firmware ignoruje wpis równy ostatniemu
+        ctl.set(CID_PAN_ABSOLUTE, pan0 + 1)     # the firmware ignores a write equal to the last one
         ctl.set(CID_PAN_ABSOLUTE, pan0)
         ctl.set(CID_ZOOM_ABSOLUTE, zoom0)
         stream.stop()

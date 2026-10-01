@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Test drugiego formatu (YUYV) i zrzut kontroli V4L2 kamery EagleEye IV.
+"""Testing the second format (YUYV) and dumping the V4L2 controls of the EagleEye IV camera.
 
-Użycie:
-  v4l2-yuyv-ctrl.py grab  /dev/video0 wyjscie.png [szer] [wys]
+Usage:
+  v4l2-yuyv-ctrl.py grab  /dev/video0 output.png [width] [height]
   v4l2-yuyv-ctrl.py ctrls /dev/video0
 """
 import ctypes
@@ -17,7 +17,7 @@ import time
 BUF_TYPE_CAPTURE = 1
 MEMORY_MMAP = 1
 FIELD_NONE = 1
-PIX_OFF = 4  # struct v4l2_pix_format leży na offsecie 8 struktury, czyli 4 w "raw"
+PIX_OFF = 4  # struct v4l2_pix_format sits at offset 8 of the structure, i.e. 4 in "raw"
 
 CTRL_FLAG_NEXT_CTRL = 0x80000000
 
@@ -138,7 +138,7 @@ def grab(dev, out_png, width, height, pixfmt=b"YUYV"):
         req.type = BUF_TYPE_CAPTURE
         req.memory = MEMORY_MMAP
         fcntl.ioctl(fd, REQBUFS, req)
-        print(f"[REQBUFS] {req.count} buforow")
+        print(f"[REQBUFS] {req.count} buffers")
 
         for i in range(req.count):
             b = V4L2Buffer()
@@ -151,7 +151,7 @@ def grab(dev, out_png, width, height, pixfmt=b"YUYV"):
             fcntl.ioctl(fd, QBUF, b)
 
         fcntl.ioctl(fd, STREAMON, struct.pack("=I", BUF_TYPE_CAPTURE))
-        print("[STREAMON] czekam na pelna ramke YUYV...")
+        print("[STREAMON] waiting for a complete YUYV frame...")
         expected = w * h * 2
         got = None
         deadline = time.time() + 20.0
@@ -166,14 +166,14 @@ def grab(dev, out_png, width, height, pixfmt=b"YUYV"):
             data = maps[b.index][: b.bytesused]
             if b.bytesused >= expected:
                 got = (b.bytesused, data[:expected])
-                print(f"  [OK] buf={b.index} {b.bytesused} B >= {expected} B (pelna ramka)")
+                print(f"  [OK] buf={b.index} {b.bytesused} B >= {expected} B (complete frame)")
             fcntl.ioctl(fd, QBUF, b)
             if got:
                 break
 
         fcntl.ioctl(fd, STREAMOFF, struct.pack("=I", BUF_TYPE_CAPTURE))
         if not got:
-            print("  nie udalo sie odebrac pelnej ramki YUYV")
+            print("  failed to receive a complete YUYV frame")
             return 1
 
         import struct as _s
@@ -194,7 +194,7 @@ def grab(dev, out_png, width, height, pixfmt=b"YUYV"):
         from PIL import Image
         im = Image.frombytes("RGB", (w, h), bytes(rgb))
         im.save(out_png)
-        print(f"[konwersja YUYV->RGB] zapisano {out_png} ({w}x{h})")
+        print(f"[YUYV->RGB conversion] saved {out_png} ({w}x{h})")
         return 0
     finally:
         for m in maps:
@@ -205,7 +205,7 @@ def grab(dev, out_png, width, height, pixfmt=b"YUYV"):
 def ctrls(dev):
     fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
     try:
-        print(f"Kontrole V4L2 dla {dev}:")
+        print(f"V4L2 controls for {dev}:")
         qc = V4L2QueryCtrl()
         qc.id = CTRL_FLAG_NEXT_CTRL
         rows = []
@@ -218,13 +218,13 @@ def ctrls(dev):
             rows.append((qc.id, name, qc.minimum, qc.maximum, qc.step, qc.default_value, qc.flags))
             qc.id = qc.id | CTRL_FLAG_NEXT_CTRL
         if not rows:
-            print("  brak jakichkolwiek kontroli")
+            print("  no controls at all")
             return 0
         for cid, name, mn, mx, st, dv, fl in rows:
             print(f"  0x{cid:08x}  {name:28s} min={mn:<8} max={mx:<8} step={st:<5} def={dv:<6} flags=0x{fl:x}")
-        print(f"\nRazem: {len(rows)} kontroli")
+        print(f"\nTotal: {len(rows)} controls")
         ptz = [r for r in rows if 0x009A0000 <= r[0] <= 0x009AFFFF]
-        print(f"Kontrole z klasy CAMERA (PTZ itp.): {len(ptz)}")
+        print(f"CAMERA class controls (PTZ etc.): {len(ptz)}")
         return 0
     finally:
         os.close(fd)
@@ -258,14 +258,14 @@ class V4L2ExtControls(ctypes.Structure):
     ]
 
 
-# V4L2_CTRL_WHICH_CUR_VAL == 0 -> operujemy na biezacej wartosci kontrolki,
-# a nie na wartosci domyslnej czy zadanego requesu.
+# V4L2_CTRL_WHICH_CUR_VAL == 0 -> we operate on the current control value,
+# not on the default value or a requested request.
 G_EXT_CTRLS = _IOWR("V", 71, ctypes.sizeof(V4L2ExtControls))
 S_EXT_CTRLS = _IOWR("V", 72, ctypes.sizeof(V4L2ExtControls))
 
 
 def _ext_ctrls(dev, ctrl_id, value=None):
-    """Odczyt (value=None) albo zapis kontrolki przez EXT_CTRLS."""
+    """Reading (value=None) or writing a control through EXT_CTRLS."""
     fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
     try:
         ctl = V4L2ExtControl()
@@ -287,10 +287,10 @@ def _ext_ctrls(dev, ctrl_id, value=None):
 def set_ctrl(dev, ctrl_id, value):
     try:
         got = _ext_ctrls(dev, ctrl_id, value)
-        print(f"  ustawiono 0x{ctrl_id:08x} = {got}")
+        print(f"  set 0x{ctrl_id:08x} = {got}")
         return 0
     except OSError as e:
-        print(f"  blad: {e}")
+        print(f"  error: {e}")
         return 1
 
 

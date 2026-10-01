@@ -1,4 +1,4 @@
-"""Trwałe ustawienia aplikacji i presety pozycji kamery."""
+"""Persistent application settings and camera position presets."""
 
 from __future__ import annotations
 
@@ -20,21 +20,21 @@ DEFAULTS: dict = {
     "preview_fps": 15,
     "overlay": True,
     "language": "auto",            # "auto" (from $LANG), or a catalog code: "en", "pl"
-    # Zmierzona dynamika głowicy (pola eagleeye.head_model.Dynamics).
-    # Pusty słownik = wartości ze spike'u; wypełnia tools/measure_dynamics.py --save.
+    # Measured head dynamics (fields of eagleeye.head_model.Dynamics).
+    # An empty dict = values from the spike; filled in by tools/measure_dynamics.py --save.
     "dynamics": {},
     "tracking": {
         "profile": "talk",             # "talk" or "presentation"
-        "overrides": {},               # nadpisania pól profiles.TUNABLE z sekcji "zaawansowane"
+        "overrides": {},               # overrides of profiles.TUNABLE fields from the "advanced" section
         "use_gpu": True,
         "invert_pan": False,
         "invert_tilt": False,
         "rate_hz": 15.0,
-        "home": None,                  # [pan, tilt] presetu "dom" albo None
-        "last_azimuth": None,          # [pan, tilt] ostatniej pozycji osoby - start skanu
-        "record": False,               # zapis sesji do captures/sessions/*.jsonl
-        "auto_zoom": True,             # zoom dobierany do planu; ręczny zoom trwale wyłącza
-        "select_hold_s": 6.0,          # s czekania na wybraną osobę po jej zniknięciu
+        "home": None,                  # [pan, tilt] of the "home" preset, or None
+        "last_azimuth": None,          # [pan, tilt] of the person's last position - scan start
+        "record": False,               # session recording to captures/sessions/*.jsonl
+        "auto_zoom": True,             # zoom matched to the shot; a manual zoom disables it permanently
+        "select_hold_s": 6.0,          # s of waiting for the selected person after they vanish
     },
 }
 
@@ -45,7 +45,7 @@ RESOLUTIONS: list[tuple[int, int]] = [
 
 @dataclass
 class Preset:
-    """Zapisana pozycja kamery."""
+    """Saved camera position."""
 
     name: str
     pan: int = 0
@@ -56,11 +56,11 @@ class Preset:
 
 
 class Store:
-    """Wczytuje i zapisuje ``config.json`` (zapis atomowy, żeby nie uszkodzić pliku)."""
+    """Reads and writes ``config.json`` (atomic write, so the file is not corrupted)."""
 
     def __init__(self, path: Path = CONFIG_PATH) -> None:
         self.path = path
-        self.settings: dict = json.loads(json.dumps(DEFAULTS))  # głęboka kopia
+        self.settings: dict = json.loads(json.dumps(DEFAULTS))  # deep copy
         self.presets: list[Preset] = []
         self.load()
 
@@ -73,7 +73,7 @@ class Store:
             return
         for key, value in (data.get("settings") or {}).items():
             if key == "tracking" and isinstance(value, dict):
-                # Klucze starego silnika (PID, settle_*, trajektoria) są pomijane.
+                # Old engine keys (PID, settle_*, trajectory) are skipped.
                 for k, v in value.items():
                     if k in self.settings["tracking"]:
                         self.settings["tracking"][k] = v
@@ -100,7 +100,7 @@ class Store:
             if os.path.exists(tmp):
                 os.unlink(tmp)
 
-    # --- presety ---
+    # --- presets ---
 
     def upsert_preset(self, preset: Preset) -> None:
         for i, existing in enumerate(self.presets):
@@ -139,20 +139,20 @@ def captures_dir() -> Path:
 
 
 def pictures_dir() -> Path:
-    """Katalog obrazów użytkownika wg XDG (~/Pictures, ~/Obrazy - zależnie od języka)."""
+    """The user's pictures directory per XDG (localized, e.g. ~/Pictures)."""
     try:
         out = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True,
                              text=True, timeout=2).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         out = ""
-    # xdg-user-dir zwraca $HOME, gdy katalog obrazów nie jest ustawiony
+    # xdg-user-dir returns $HOME when the pictures directory is not set
     if out and Path(out) != Path.home():
         return Path(out)
     return Path.home() / "Pictures"
 
 
 def snapshots_dir() -> Path:
-    """Katalog na zrzuty klatek z przycisku w UI."""
+    """Directory for frame snapshots from the UI button."""
     path = pictures_dir() / "EagleEye"
     path.mkdir(parents=True, exist_ok=True)
     return path

@@ -1,11 +1,12 @@
-"""Rysowanie na podglądzie: wykrycia, ich punkty głowy, punkt głowy celu, linie złotego
-podziału z punktami przecięcia i wyróżniony punkt, w który kamera kadruje głowę.
+"""Drawing on the preview: detections, their head points, the target's head point, the
+golden-ratio lines with their intersections and the highlighted point the camera frames
+the head on.
 
-Bez prostokąta strefy wyzwalania: to wewnętrzny próg reżysera, nie kompozycja - kadr
-ocenia się po tym, czy punkt głowy leży na punkcie złotego podziału.
+No trigger-zone rectangle: that is the director's internal threshold, not composition - the
+frame is judged by whether the head point lies on the golden-ratio point.
 
-Wykrycia są liczone na klatce zmniejszonej o połowę, a podgląd bywa pełnej
-rozdzielczości - współrzędne skalujemy przez ``state.frame_size``.
+Detections are computed on a frame reduced by half, while the preview may be full
+resolution - the coordinates are scaled by ``state.frame_size``.
 """
 
 from __future__ import annotations
@@ -23,11 +24,11 @@ from .tracker import TrackerState
 COLOR_DET = (160, 160, 160)
 COLOR_TARGET = (80, 220, 80)
 COLOR_HEAD = (255, 180, 60)
-COLOR_GRID = (40, 200, 240)      # złoty: linie i punkty złotego podziału
-COLOR_AIM = (60, 60, 255)        # czerwony: punkt, w który kamera kadruje głowę
-COLOR_SELECTED = (255, 100, 230)   # różowy: osoba wybrana kliknięciem
-COLOR_SUSPENDED = (0, 165, 255)    # pomarańczowy: wybrana, której chwilowo nie widać
-HEAD_KEYPOINTS = 5          # COCO: nos, oczy, uszy - z nich liczony jest punkt głowy
+COLOR_GRID = (40, 200, 240)      # gold: the golden-ratio lines and points
+COLOR_AIM = (60, 60, 255)        # red: the point the camera frames the head on
+COLOR_SELECTED = (255, 100, 230)   # pink: the person selected by clicking
+COLOR_SUSPENDED = (0, 165, 255)    # orange: the selected person, temporarily not visible
+HEAD_KEYPOINTS = 5          # COCO: nose, eyes, ears - the head point is computed from them
 KEYPOINT_MIN_CONF = 0.3
 
 
@@ -38,8 +39,8 @@ def _hex(bgr: tuple[int, int, int]) -> str:
 
 @dataclass(frozen=True)
 class Shape:
-    """Prymityw nakładki we współrzędnych okna: ``rect`` (obrys), ``dot`` (koło),
-    ``ring`` (okrąg) albo ``line`` (odcinek od (x, y) do (x2, y2))."""
+    """Overlay primitive in window coordinates: ``rect`` (outline), ``dot`` (disc),
+    ``ring`` (ring) or ``line`` (segment from (x, y) to (x2, y2))."""
     kind: str
     x: float
     y: float
@@ -54,20 +55,20 @@ class Shape:
 
 
 def golden_points() -> list[tuple[float, float]]:
-    """Cztery punkty przecięcia linii złotego podziału (ułamki kadru)."""
+    """The four intersection points of the golden-ratio lines (frame fractions)."""
     return [(gx, gy) for gy in (GOLDEN, 1.0 - GOLDEN) for gx in (GOLDEN, 1.0 - GOLDEN)]
 
 
 def _fit(box_w: float, box_h: float, sw: int, sh: int) -> tuple[float, float, float]:
-    """Skala i przesunięcie (ox, oy) obrazu wpasowanego w pole, do góry i na środek."""
+    """Scale and offset (ox, oy) of an image fitted into the box, top-aligned and centered."""
     k = min(box_w / sw, box_h / sh)
     return k, (box_w - sw * k) / 2, 0.0
 
 
 def frame_point(box_w: float, box_h: float, frame_size: tuple[int, int],
                 x: float, y: float) -> tuple[float, float] | None:
-    """Punkt okna (np. kliknięcie) -> punkt klatki; ``None``, gdy pada poza obrazem (pasy po bokach)
-    albo pole/klatka nie mają rozmiaru. Odwrotność geometrii ``overlay_shapes``."""
+    """Window point (e.g. a click) -> frame point; ``None`` when it falls outside the image
+    (bands on the sides) or the box/frame has no size. The inverse of the ``overlay_shapes`` geometry."""
     sw, sh = frame_size
     if sw <= 0 or sh <= 0 or box_w <= 0 or box_h <= 0:
         return None
@@ -98,11 +99,11 @@ def _selection_shapes(state: TrackerState, k: float, ox: float, oy: float) -> li
 
 
 def overlay_shapes(state: TrackerState, box_w: float, box_h: float) -> list[Shape]:
-    """To samo co :func:`annotate`, ale jako kształty do narysowania nad obrazem.
+    """The same as :func:`annotate`, but as shapes to draw over the image.
 
-    Obraz w oknie jest wpasowany (``BoxFit.CONTAIN``) w pole ``box_w`` x ``box_h``
-    i wyrównany do górnej krawędzi, w poziomie do środka - jak ``Alignment.TOP_CENTER``
-    podglądu w app.py. Dzięki temu podgląd dostaje klatkę z kamery bez zmian.
+    The image in the window is fitted (``BoxFit.CONTAIN``) into the ``box_w`` x ``box_h`` box
+    and aligned to the top edge, horizontally to the center - like ``Alignment.TOP_CENTER``
+    of the preview in app.py. This way the preview gets the camera frame unchanged.
     """
     sw, sh = state.frame_size
     if not state.enabled or sw <= 0 or sh <= 0 or box_w <= 0 or box_h <= 0:

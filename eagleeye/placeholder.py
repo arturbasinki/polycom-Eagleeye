@@ -1,11 +1,11 @@
-"""Zaślepka wirtualnej kamery: plansza „EagleEye nie działa”, gdy aplikacja jest wyłączona.
+"""Virtual camera placeholder: the "EagleEye is not running" slate when the app is off.
 
-Chrome widzi urządzenie v4l2loopback (exclusive_caps=1) jako kamerę tylko wtedy,
-gdy ktoś do niego pisze, a listę kamer buduje raz - przy starcie. Bez zaślepki
-EagleEye znika z Meet, jeśli Chrome wystartował przed aplikacją. Zaślepka działa
-od zalogowania (usługa systemd --user), pisze planszę kilka razy na sekundę
-i oddaje urządzenie, gdy tylko odpowie gniazdo aplikacji; po zamknięciu
-aplikacji przejmuje je z powrotem. Odbiorcy (Meet) nie tracą urządzenia.
+Chrome sees the v4l2loopback device (exclusive_caps=1) as a camera only while
+someone writes to it, and it builds its camera list once - at startup. Without the
+placeholder EagleEye disappears from Meet if Chrome started before the app. The placeholder runs
+from login (a systemd --user service), writes the slate a few times per second
+and releases the device as soon as the app's socket answers; after the app
+closes it takes it back. Receivers (Meet) do not lose the device.
 
     .venv/bin/python -m eagleeye.placeholder
 """
@@ -27,8 +27,8 @@ from .vcam import OUT_SIZE, card_i420, card_texts, open_loopback
 log = logging.getLogger("eagleeye")
 
 OFF_CARD = ("vcam.card.off.title", "vcam.card.off.subtitle")
-WRITE_PERIOD_S = 0.2     # 5 fps wystarczy na nieruchomą planszę
-IDLE_PERIOD_S = 0.5      # co tyle sprawdzamy, czy aplikacja działa / urządzenie jest wolne
+WRITE_PERIOD_S = 0.2     # 5 fps is enough for a still slate
+IDLE_PERIOD_S = 0.5      # how often we check whether the app is running / the device is free
 
 
 class Placeholder:
@@ -43,7 +43,7 @@ class Placeholder:
         self._device = None
 
     def tick(self) -> str:
-        """Jeden krok: oddaje urządzenie aplikacji albo pisze planszę. Zwraca stan."""
+        """One step: releases the device to the app or writes the slate. Returns the state."""
         wanted = self._language()
         if wanted != self._card_language:
             set_language(wanted)
@@ -56,7 +56,7 @@ class Placeholder:
             try:
                 self._device = self._factory()
             except (OSError, V4L2Error):
-                self._device = None       # zajęte przez aplikację w trakcie startu albo brak modułu
+                self._device = None       # taken by the app during startup, or no module
             if self._device is None:
                 return "no_device"
         try:
