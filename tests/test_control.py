@@ -18,6 +18,7 @@ from runner import run  # noqa: E402
 
 from eagleeye.control import (ControlServer, InstanceRunning, instance_running,  # noqa: E402
                               send, socket_path)
+from eagleeye.i18n import LocalizedError  # noqa: E402
 
 
 def temp_socket() -> Path:
@@ -32,28 +33,41 @@ def serve(handler):
 
 def test_command_reaches_handler_and_state_comes_back() -> None:
     got = []
-    server = serve(lambda cmd, arg: got.append((cmd, arg)) or {"prywatnosc": True})
+    server = serve(lambda cmd, arg: got.append((cmd, arg)) or {"privacy": True})
     try:
-        reply = send("prywatnosc", "wl", server.path)
+        reply = send("privacy", "on", server.path)
     finally:
         server.stop()
-    assert got == [("prywatnosc", "wl")]
-    assert reply == {"ok": True, "stan": {"prywatnosc": True}}
+    assert got == [("privacy", "on")]
+    assert reply == {"ok": True, "state": {"privacy": True}}
 
 
 def test_handler_error_is_reported_and_server_survives() -> None:
     def handler(cmd, arg):
-        if cmd == "zle":
-            raise ValueError("nieznane polecenie")
+        if cmd == "bad":
+            raise ValueError("unknown command")
         return {}
     server = serve(handler)
     try:
-        bad = send("zle", None, server.path)
-        good = send("stan", None, server.path)
+        bad = send("bad", None, server.path)
+        good = send("state", None, server.path)
     finally:
         server.stop()
-    assert bad["ok"] is False and "nieznane polecenie" in bad["blad"]
+    assert bad["ok"] is False and "unknown command" in bad["error"]
     assert good["ok"] is True
+
+
+def test_localized_error_reply_carries_the_message() -> None:
+    def handler(cmd, arg):
+        raise LocalizedError("engine.error.no_camera")
+    server = ControlServer(handler, temp_socket())
+    server.start()
+    try:
+        reply = send("tracking", "on", server.path)
+    finally:
+        server.stop()
+    assert reply["ok"] is False and reply["error"].startswith("LocalizedError")
+    assert reply["message"] == {"key": "engine.error.no_camera", "params": {}}
 
 
 def test_socket_is_private() -> None:
@@ -83,16 +97,16 @@ def test_stale_socket_is_removed() -> None:
 
 
 def test_second_server_on_live_socket_refuses_to_start() -> None:
-    first = serve(lambda cmd, arg: {"kto": "pierwszy"})
-    second = ControlServer(lambda cmd, arg: {"kto": "drugi"}, first.path)
+    first = serve(lambda cmd, arg: {"who": "first"})
+    second = ControlServer(lambda cmd, arg: {"who": "second"}, first.path)
     try:
         try:
             second.start()
         except InstanceRunning:
             pass
         else:
-            raise AssertionError("drugi serwer przejął gniazdo żywej instancji")
-        assert send("stan", path=first.path)["stan"] == {"kto": "pierwszy"}
+            raise AssertionError("the second server took over the live instance's socket")
+        assert send("state", path=first.path)["state"] == {"who": "first"}
     finally:
         first.stop()
 
@@ -105,17 +119,17 @@ def test_server_starts_over_stale_socket() -> None:
     server = ControlServer(lambda cmd, arg: {"ok": 1}, path)
     server.start()
     try:
-        assert send("stan", path=path)["stan"] == {"ok": 1}
+        assert send("state", path=path)["state"] == {"ok": 1}
     finally:
         server.stop()
 
 
 def test_send_without_server_raises_oserror() -> None:
     try:
-        send("stan", None, temp_socket())
+        send("state", None, temp_socket())
     except OSError:
         return
-    raise AssertionError("oczekiwano OSError")
+    raise AssertionError("expected OSError")
 
 
 def test_socket_path_uses_runtime_dir() -> None:

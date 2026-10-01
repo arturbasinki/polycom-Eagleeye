@@ -17,6 +17,7 @@ from runner import run  # noqa: E402
 
 import eagleeye.cli as cli  # noqa: E402
 from eagleeye.control import ControlServer  # noqa: E402
+from eagleeye.i18n import t  # noqa: E402
 
 
 def with_runtime_dir():
@@ -29,8 +30,8 @@ def test_command_without_running_app_fails_with_notification() -> None:
     with_runtime_dir()
     notes = []
     cli.notify = notes.append
-    assert cli.main(["prywatnosc"]) == 1
-    assert notes and "nie działa" in notes[0]
+    assert cli.main(["privacy"]) == 1
+    assert notes and notes[0] == t("cli.not_running_notify")
 
 
 def test_command_reaches_running_app() -> None:
@@ -39,10 +40,10 @@ def test_command_reaches_running_app() -> None:
     server = ControlServer(lambda cmd, arg: got.append((cmd, arg)) or {}, path)
     server.start()
     try:
-        assert cli.main(["sledzenie", "wl"]) == 0
+        assert cli.main(["tracking", "on"]) == 0
     finally:
         server.stop()
-    assert got == [("sledzenie", "wl")]
+    assert got == [("tracking", "on")]
 
 
 def test_second_start_only_shows_existing_window() -> None:
@@ -54,15 +55,15 @@ def test_second_start_only_shows_existing_window() -> None:
         assert cli.main([]) == 0
     finally:
         server.stop()
-    assert got == ["stan", "pokaz"], got
+    assert got == ["state", "show"], got
 
 
 def test_autozoom_is_a_known_command() -> None:
     assert "autozoom" in cli.COMMANDS
 
 
-def test_wybierz_is_a_known_command() -> None:
-    assert "wybierz" in cli.COMMANDS and "wybierz" in cli.__doc__
+def test_select_is_a_known_command() -> None:
+    assert "select" in cli.COMMANDS and "select" in cli.__doc__
 
 
 def test_failed_command_returns_1_and_notifies() -> None:
@@ -71,14 +72,14 @@ def test_failed_command_returns_1_and_notifies() -> None:
     cli.notify = notes.append
 
     def handler(cmd, arg):
-        raise RuntimeError("najpierw wyłącz prywatność")
+        raise RuntimeError("turn privacy off first")
     server = ControlServer(handler, path)
     server.start()
     try:
-        assert cli.main(["sledzenie", "wl"]) == 1
+        assert cli.main(["tracking", "on"]) == 1
     finally:
         server.stop()
-    assert notes and "prywatność" in notes[0]
+    assert notes and "privacy" in notes[0]
 
 
 if __name__ == "__main__":

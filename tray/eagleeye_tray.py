@@ -25,16 +25,16 @@ POLL_S = 1
 
 
 def icon_for(state: dict) -> Path:
-    return ICON_PRIVACY if state.get("prywatnosc") else ICON
+    return ICON_PRIVACY if state.get("privacy") else ICON
 
 
 def tooltip(state: dict) -> str:
-    if state.get("prywatnosc"):
+    if state.get("privacy"):
         return "EagleEye: prywatność włączona"
-    if not state.get("kamera"):
+    if not state.get("camera"):
         return "EagleEye: kamera niepodłączona"
-    tracking = "śledzenie włączone" if state.get("sledzenie") else "śledzenie wyłączone"
-    return f"EagleEye: {tracking}, profil {state.get('profil', '?')}"
+    tracking = "śledzenie włączone" if state.get("tracking") else "śledzenie wyłączone"
+    return f"EagleEye: {tracking}, profil {state.get('profile', '?')}"
 
 
 def main() -> int:
@@ -60,23 +60,23 @@ def main() -> int:
 
     menu = Gtk.Menu()
     show = Gtk.MenuItem(label="Pokaż okno")
-    show.connect("activate", lambda _w: command("pokaz"))
+    show.connect("activate", lambda _w: command("show"))
     tracking = Gtk.CheckMenuItem(label="Śledzenie")
-    tracking.connect("toggled", lambda w: command("sledzenie", "wl" if w.get_active() else "wyl"))
+    tracking.connect("toggled", lambda w: command("tracking", "on" if w.get_active() else "off"))
     profile_item = Gtk.MenuItem(label="Profil")
     profile_menu = Gtk.Menu()
     radios, group = {}, None
     for name, label in PROFILE_LABELS.items():
         radio = Gtk.RadioMenuItem.new_with_label_from_widget(group, label)
         group = radio
-        radio.connect("toggled", lambda w, n=name: w.get_active() and command("profil", n))
+        radio.connect("toggled", lambda w, n=name: w.get_active() and command("profile", n))
         radios[name] = radio
         profile_menu.append(radio)
     profile_item.set_submenu(profile_menu)
     privacy = Gtk.CheckMenuItem(label="Prywatność   Super+Shift+C")
-    privacy.connect("toggled", lambda w: command("prywatnosc", "wl" if w.get_active() else "wyl"))
+    privacy.connect("toggled", lambda w: command("privacy", "on" if w.get_active() else "off"))
     quit_item = Gtk.MenuItem(label="Zakończ")
-    quit_item.connect("activate", lambda _w: command("zakoncz"))
+    quit_item.connect("activate", lambda _w: command("quit"))
     for item in (show, Gtk.SeparatorMenuItem(), tracking, profile_item, privacy,
                  Gtk.SeparatorMenuItem(), quit_item):
         menu.append(item)
@@ -85,17 +85,17 @@ def main() -> int:
 
     def poll() -> bool:
         try:
-            reply = send("stan")
+            reply = send("state")
         except (OSError, ValueError):
             Gtk.main_quit()
             return False
-        state = reply.get("stan") or {}
+        state = reply.get("state") or {}
         updating[0] = True
         try:
-            tracking.set_active(bool(state.get("sledzenie")))
-            tracking.set_sensitive(bool(state.get("kamera")) and not state.get("prywatnosc"))
-            privacy.set_active(bool(state.get("prywatnosc")))
-            radio = radios.get(state.get("profil"))
+            tracking.set_active(bool(state.get("tracking")))
+            tracking.set_sensitive(bool(state.get("camera")) and not state.get("privacy"))
+            privacy.set_active(bool(state.get("privacy")))
+            radio = radios.get(state.get("profile"))
             if radio is not None:
                 radio.set_active(True)
             indicator.set_icon_full(str(icon_for(state)), tooltip(state))

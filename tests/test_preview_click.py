@@ -38,7 +38,7 @@ def _wait_until(cond, timeout: float = 3.0) -> bool:
 def _app_with_two_people():
     engine, _ = make_engine(perception=TwoPeople)
     engine.start()
-    engine.command("sledzenie", "wl")
+    engine.command("tracking", "on")
     assert _wait_until(lambda: len(engine.tracker.state.tracks) == 2)
     return engine, CameraApp(MagicMock(), engine, MagicMock())
 
@@ -48,7 +48,7 @@ def test_tap_on_a_person_selects_them() -> None:
     try:
         ui._overlay_size = (1280.0, 720.0)            # klatka 640x360 -> skala 2, bez pasów
         ui._on_preview_tap(_tap(2 * 220, 2 * 80))     # wewnątrz ramki prawej osoby
-        assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "selected")
+        assert _wait_until(lambda: engine.state()["selection"]["state"] == "selected")
     finally:
         engine.shutdown()
 
@@ -60,7 +60,7 @@ def test_tap_in_the_side_bars_or_empty_space_selects_nobody() -> None:
         ui._on_preview_tap(_tap(100, 160))
         ui._on_preview_tap(_tap(360 + 2 * 150, 2 * 80))   # w obrazie, ale między osobami
         time.sleep(0.3)
-        assert engine.state()["wybor"]["stan"] == "auto"
+        assert engine.state()["selection"]["state"] == "auto"
     finally:
         engine.shutdown()
 
@@ -68,10 +68,10 @@ def test_tap_in_the_side_bars_or_empty_space_selects_nobody() -> None:
 def test_tap_is_ignored_without_tracking() -> None:
     engine, ui = _app_with_two_people()
     try:
-        engine.command("sledzenie", "wyl")
+        engine.command("tracking", "off")
         ui._overlay_size = (1280.0, 720.0)
         ui._on_preview_tap(_tap(440, 160))
-        assert engine.state()["wybor"]["stan"] == "auto"
+        assert engine.state()["selection"]["state"] == "auto"
         ui._on_preview_tap(SimpleNamespace(local_position=None))     # brak pozycji: bez wyjątku
     finally:
         engine.shutdown()

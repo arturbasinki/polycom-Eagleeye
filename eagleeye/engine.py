@@ -18,8 +18,9 @@ from typing import Callable
 
 from .config import Store
 from .head_model import dynamics_from_settings
+from .i18n import LocalizedError, Message, get_language, msg, set_language
 from .privacy import Privacy
-from .profiles import PROFILES
+from .profiles import DEFAULT_PROFILE, PROFILES
 from .tracker import Tracker, TrackerSettings
 from .v4l2 import ControlDevice, MjpegStream, V4L2Error
 from .vcam import VirtualCamera
@@ -28,18 +29,18 @@ log = logging.getLogger("eagleeye")
 
 PARK_TOLERANCE = 1800      # jednostki kontrolek pan/tilt (1/3600°): pół stopnia
 
-_ON = {"wl", "wł", "on", "1"}
-_OFF = {"wyl", "wył", "off", "0"}
+_ON = {"on", "1"}
+_OFF = {"off", "0"}
 
 
 def _switch(arg: str | None, current: bool) -> bool:
-    if arg is None or arg in ("przelacz", "przełącz"):
+    if arg is None or arg == "toggle":
         return not current
     if arg in _ON:
         return True
     if arg in _OFF:
         return False
-    raise ValueError(f"nieznany argument {arg!r} (wl / wyl / przelacz)")
+    raise ValueError(f"unknown argument {arg!r} (on / off / toggle)")
 
 
 def device_holders(device: str) -> list[str]:
@@ -80,6 +81,10 @@ class Engine:
                  holders: Callable[[str], list[str]] = device_holders) -> None:
         self.store = store
         self.settings = store.settings
+        set_language(self.settings["language"])
+        tracking = self.settings["tracking"]
+        if tracking["profile"] not in PROFILES:      # e.g. a value saved by an older version
+            tracking["profile"] = DEFAULT_PROFILE
         self._stream_factory = stream_factory
         self._controls_factory = controls_factory
         self._tracker_factory = tracker_factory
@@ -87,7 +92,7 @@ class Engine:
         self.controls = None
         self.tracker: Tracker | None = None
         self.caps: dict | None = None
-        self.error: str | None = None
+        self.error: Message | None = None
         self.vcam = vcam if vcam is not None else VirtualCamera()
         self.privacy = Privacy(self.vcam)
         self.ui = UiHooks()
@@ -148,7 +153,7 @@ class Engine:
             select_hold_s=float(tr["select_hold_s"]),
         )
 
-    def open_camera(self) -> str | None:
+    def open_camera(self) -> Message | None:
         """(Ponownie) otwiera kamerę. Zwraca komunikat błędu albo None."""
         with self._lock:
             self.close_camera()
@@ -158,10 +163,11 @@ class Engine:
                 self.caps = self.controls.capabilities()
             except (OSError, V4L2Error) as exc:
                 self.controls = None
-                return self._fail(f"nie mogę otworzyć {device}: {exc}")
+                return self._fail(msg("engine.error.open_failed", device=device, error=str(exc)))
             if not self.caps["is_capture"]:
                 self.close_camera()
-                return self._fail(f"{device} to nie jest węzeł przechwytujący (karta: {self.caps['card']!r})")
+                return self._fail(msg("engine.error.not_capture", device=device,
+                                      card=self.caps["card"]))
             try:
                 self.stream = self._stream_factory(device, self.settings["preview_width"],
                                                     self.settings["preview_height"])
@@ -170,7 +176,7 @@ class Engine:
                 self.close_camera()
                 if isinstance(exc, OSError) and exc.errno == errno.EBUSY:
                     return self._fail_busy(device)
-                return self._fail(f"strumień nie wstał: {exc}")
+                return self._fail(msg("engine.error.stream_failed", error=str(exc)))
             self.tracker = self._tracker_factory(self.stream, self.controls, self.tracker_settings())
             self.tracker.start()
             self.vcam.set_source(self.stream)
@@ -178,17 +184,17 @@ class Engine:
             log.info("kamera podłączona: %s (%s)", self.caps["card"], self.caps["bus_info"])
             return None
 
-    def _fail(self, message: str) -> str:
+    def _fail(self, message: Message) -> Message:
         self.error, self._busy = message, False
-        log.error("%s", message)
+        log.error("%s", message.text("en"))
         return message
 
-    def _fail_busy(self, device: str) -> str:
-        who = ", ".join(self._holders(device)) or "inny program"
-        message = (f"kamerę {device} zajmuje: {who} - w Meet / Teams / OBS wybierz kamerę "
-                   f"„EagleEye”, nie „Polycom…”; połączę się sam, gdy się zwolni")
+    def _fail_busy(self, device: str) -> Message:
+        who = ", ".join(self._holders(device))
+        message = (msg("engine.error.busy", device=device, who=who) if who
+                   else msg("engine.error.busy_unknown", device=device))
         if message != self.error:
-            log.warning("%s", message)
+            log.warning("%s", message.text("en"))
         self.error, self._busy = message, True
         return message
 
@@ -221,23 +227,23 @@ class Engine:
     def set_tracking(self, on: bool) -> None:
         with self._lock:
             if self.tracker is None:
-                raise RuntimeError("kamera niepodłączona")
+                raise LocalizedError("engine.error.no_camera")
             if on and self.privacy.active:
-                raise RuntimeError("najpierw wyłącz prywatność")
+                raise LocalizedError("engine.error.privacy_on")
             self.tracker.set_enabled(on)
 
     def command(self, cmd: str, arg: str | None = None) -> dict:
-        if cmd == "pokaz":
+        if cmd == "show":
             self.ui.show()
-        elif cmd == "schowaj":
+        elif cmd == "hide":
             self.ui.hide()
-        elif cmd == "prywatnosc":
+        elif cmd == "privacy":
             self.set_privacy(_switch(arg, self.privacy.active))
-        elif cmd == "sledzenie":
+        elif cmd == "tracking":
             self.set_tracking(_switch(arg, bool(self.tracker and self.tracker.enabled)))
-        elif cmd == "profil":
+        elif cmd == "profile":
             if arg not in PROFILES:
-                raise ValueError(f"nieznany profil {arg!r} ({', '.join(PROFILES)})")
+                raise ValueError(f"unknown profile {arg!r} ({', '.join(PROFILES)})")
             tr = self.settings["tracking"]
             tr["profile"], tr["overrides"] = arg, {}
             if self.tracker is not None:
@@ -249,42 +255,54 @@ class Engine:
             if self.tracker is not None:
                 self.tracker.set_auto_zoom(tr["auto_zoom"])
             self.store.save()
-        elif cmd == "wybierz":
+        elif cmd == "select":
             self._select(arg)
-        elif cmd == "zakoncz":
+        elif cmd == "language":
+            self.set_language(arg or "auto")
+        elif cmd == "quit":
             self.ui.quit()
-        elif cmd != "stan":
-            raise ValueError(f"nieznane polecenie {cmd!r}")
+        elif cmd != "state":
+            raise ValueError(f"unknown command {cmd!r}")
         return self.state()
+
+    def set_language(self, code: str) -> str:
+        """Apply and save the UI language; the virtual-camera slates re-render at once."""
+        with self._lock:
+            active = set_language(code)
+            self.settings["language"] = code
+            self.store.save()
+            self.vcam.refresh_language()
+            return active
 
     def _select(self, arg: str | None) -> None:
         """``wybierz x,y`` - osoba pod punktem klatki (układ ``stan.wybor.klatka``);
         ``wybierz brak`` - z powrotem tryb automatyczny."""
         with self._lock:
             if self.tracker is None:
-                raise RuntimeError("kamera niepodłączona")
-            if arg == "brak":
+                raise LocalizedError("engine.error.no_camera")
+            if arg == "none":
                 self.tracker.clear_selection()
                 return
             try:
                 x, y = (float(v) for v in (arg or "").split(","))
             except ValueError:
-                raise ValueError(f"wybierz oczekuje x,y albo 'brak' (dostałem {arg!r})") from None
+                raise ValueError(f"select expects x,y or 'none' (got {arg!r})") from None
             self.tracker.select_at(x, y)
 
     def state(self) -> dict:
         tracker = self.tracker
         return {
-            "kamera": tracker is not None,
-            "blad": self.error,
-            "sledzenie": bool(tracker and tracker.enabled),
-            "profil": self.settings["tracking"]["profile"],
-            "prywatnosc": self.privacy.active,
-            "zoom_auto": self._auto_zoom(),
-            "kadr": self._framing(tracker),
-            "wybor": self._selection(tracker),
-            "wirtualna_kamera": self.vcam.status,
-            "wydajnosc": self._performance(tracker),
+            "camera": tracker is not None,
+            "error": self.error.to_dict() if self.error else None,
+            "tracking": bool(tracker and tracker.enabled),
+            "profile": self.settings["tracking"]["profile"],
+            "privacy": self.privacy.active,
+            "auto_zoom": self._auto_zoom(),
+            "framing": self._framing(tracker),
+            "selection": self._selection(tracker),
+            "virtual_camera": self.vcam.status.to_dict(),
+            "performance": self._performance(tracker),
+            "language": get_language(),
         }
 
     def _auto_zoom(self) -> bool:
@@ -298,7 +316,7 @@ class Engine:
         if tracker is None:
             return None
         st = tracker.state
-        return {"strona": st.side, "plan": st.shot, "yaw": st.yaw, "zoom_cel": st.zoom_goal}
+        return {"side": st.side, "shot": st.shot, "yaw": st.yaw, "zoom_goal": st.zoom_goal}
 
     @staticmethod
     def _selection(tracker) -> dict | None:
@@ -306,9 +324,10 @@ class Engine:
         if tracker is None:
             return None
         st = tracker.state
-        return {"stan": st.selection, "id": st.selected_id, "zostalo_s": round(st.selection_left, 1),
-                "uwaga": st.selection_note, "klatka": list(st.frame_size),
-                "osoby": [{"id": i.id, "ramka": list(i.box), "widoczna": i.visible} for i in st.tracks]}
+        note = st.selection_note
+        return {"state": st.selection, "id": st.selected_id, "remaining_s": round(st.selection_left, 1),
+                "note": note.to_dict() if note else None, "frame": list(st.frame_size),
+                "people": [{"id": i.id, "box": list(i.box), "visible": i.visible} for i in st.tracks]}
 
     @staticmethod
     def _performance(tracker) -> dict | None:
@@ -316,6 +335,6 @@ class Engine:
         if tracker is None:
             return None
         st = tracker.state
-        return {"hz": round(st.fps, 1), "detekcja_ms": round(st.detection_ms, 1),
-                "petla_ms": round(st.loop_ms, 1), "wiek_klatki_ms": round(st.frame_age_ms, 1),
-                "ruchy": st.moves, "tryb": st.mode}
+        return {"hz": round(st.fps, 1), "detection_ms": round(st.detection_ms, 1),
+                "loop_ms": round(st.loop_ms, 1), "frame_age_ms": round(st.frame_age_ms, 1),
+                "moves": st.moves, "mode": st.mode}

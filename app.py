@@ -918,7 +918,7 @@ class CameraApp:
         (kamera zwolniona przez inny program) albo zmienił komunikat błędu."""
         self._shown = (self.engine.tracker, self.engine.error)
         if self.engine.error or self.engine.tracker is None:
-            self.connection_status.value = self.engine.error or "kamera niepodłączona"
+            self.connection_status.value = render(self.engine.error) or "kamera niepodłączona"
             self.connection_status.color = ERROR
             self.preview_placeholder.visible = True
         else:
@@ -1202,7 +1202,7 @@ def run_app(argv: list[str] | None = None) -> None:
     try:
         server.start()      # najpierw gniazdo: drugie uruchomienie w trakcie startu tylko pokaże okno
     except InstanceRunning:
-        send("pokaz", None, server.path)
+        send("show", None, server.path)
         return
     engine.start()
     tray.start()

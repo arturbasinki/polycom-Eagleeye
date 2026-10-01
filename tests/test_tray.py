@@ -24,16 +24,16 @@ spec.loader.exec_module(tray)          # gi importuje dopiero main() - tu wystar
 
 
 def test_icon_follows_privacy() -> None:
-    assert tray.icon_for({"prywatnosc": True}) == tray.ICON_PRIVACY
-    assert tray.icon_for({"prywatnosc": False}) == tray.ICON
+    assert tray.icon_for({"privacy": True}) == tray.ICON_PRIVACY
+    assert tray.icon_for({"privacy": False}) == tray.ICON
     assert tray.ICON.exists() and tray.ICON_PRIVACY.exists()
 
 
 def test_tooltip_describes_state() -> None:
-    text = tray.tooltip({"kamera": True, "sledzenie": True, "profil": "rozmowa", "prywatnosc": False})
-    assert "śledzenie" in text and "rozmowa" in text
-    assert "prywatność" in tray.tooltip({"prywatnosc": True})
-    assert "niepodłączona" in tray.tooltip({"kamera": False})
+    text = tray.tooltip({"camera": True, "tracking": True, "profile": "talk", "privacy": False})
+    assert "śledzenie" in text and "talk" in text
+    assert "prywatność" in tray.tooltip({"privacy": True})
+    assert "niepodłączona" in tray.tooltip({"camera": False})
 
 
 def test_process_starts_and_stops() -> None:

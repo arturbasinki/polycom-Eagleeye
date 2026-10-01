@@ -1,7 +1,7 @@
 """Sterowanie działającą aplikacją przez gniazdo UNIX: jedna linia JSON w każdą stronę.
 
-Żądanie ``{"cmd": ..., "arg": ...}``, odpowiedź ``{"ok": true, "stan": {...}}`` albo
-``{"ok": false, "blad": "..."}``. Moduł używa wyłącznie biblioteki standardowej -
+Żądanie ``{"cmd": ..., "arg": ...}``, odpowiedź ``{"ok": true, "state": {...}}`` albo
+``{"ok": false, "error": "...", "message": {...}}``. Moduł używa wyłącznie biblioteki standardowej -
 importuje go też ikona w zasobniku, działająca na systemowym python3 bez venv.
 
 Gniazdo służy też jako blokada jednej instancji: kto się do niego dodzwoni,
@@ -20,6 +20,8 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from .i18n import LocalizedError
+
 SOCKET_NAME = "eagleeye.sock"
 TIMEOUT_S = 2.0
 
@@ -36,9 +38,11 @@ class _Request(socketserver.StreamRequestHandler):
         try:
             msg = json.loads(line)
             state = self.server.handler(str(msg["cmd"]), msg.get("arg"))
-            reply = {"ok": True, "stan": state}
-        except Exception as exc:     # błąd jednego polecenia nie może zabić serwera
-            reply = {"ok": False, "blad": f"{type(exc).__name__}: {exc}"}
+            reply = {"ok": True, "state": state}
+        except Exception as exc:     # one failing command must not kill the server
+            reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            if isinstance(exc, LocalizedError):
+                reply["message"] = exc.message.to_dict()
         self.wfile.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
 
 
@@ -109,7 +113,7 @@ def instance_running(path: Path | None = None) -> bool:
     """Czy działa inna instancja. Martwe gniazdo (po awarii) jest usuwane."""
     p = Path(path or socket_path())
     try:
-        send("stan", path=p)
+        send("state", path=p)
         return True
     except (OSError, ValueError):
         if p.exists():
