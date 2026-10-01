@@ -1,15 +1,15 @@
-"""Kompozycja kadru: złoty podział, strona zależna od kierunku twarzy i plan.
+"""Frame composition: golden-ratio line, side dependent on face direction, and shot.
 
-Czyste funkcje bez sprzętu. Reżyser pyta je, *gdzie* ma patrzeć kamera; *kiedy*
-ruszyć, decyduje sam (histereza, zwłoka).
+Pure functions without hardware. The director asks them *where* the camera
+should look; *when* to move it decides itself (hysteresis, dwell).
 
-* Punkt głowy ląduje na górnej linii złotego podziału (y = 0,382 od góry).
-* W poziomie: twarz na wprost - środek; twarz zwrócona w bok - punkt po przeciwnej
-  stronie, żeby wolne miejsce było przed twarzą (looking room). Strona zmienia się
-  dopiero po trwałym odwróceniu głowy, z histerezą (:class:`SideSelector`).
-* Plan (CU / MCU / MS) mówi, jaką część wysokości kadru ma zająć odcinek oczy→barki;
-  z tego wynika zoom (:func:`zoom_goal`). Wybór planu (:func:`shot_for`) to punkt
-  rozszerzenia dla przyszłego "inteligentnego kadrowania".
+* The head point lands on the upper golden-ratio line (y = 0.382 from the top).
+* Horizontally: face straight ahead - centre; face turned to the side - the point on the opposite
+  side, so the free space is in front of the face (looking room). The side changes
+  only after a sustained head turn, with hysteresis (:class:`SideSelector`).
+* The shot (CU / MCU / MS) says how much of the frame height the eye→shoulder segment
+  should occupy; the zoom follows from it (:func:`zoom_goal`). Shot selection
+  (:func:`shot_for`) is the extension point for a future "smart framing".
 """
 
 from __future__ import annotations
@@ -20,12 +20,13 @@ from .geometry import View, zoom_value_for
 from .target_filter import TargetEstimate
 
 GOLDEN = 0.382
-# Ułamek wysokości kadru na odcinek oczy→barki. Linia oczu na 0,382, dolna krawędź k takich
-# odcinków niżej: 0,382 + k·d = 1. CU k≈1,1 (barki), MCU k≈1,8 (pół klatki), MS k≈3,2 (pas).
-# MCU = 0,36: kalibracja 2026-09-25 — przy 0,34 dolna krawędź stawała na splotcie
-# słonecznym; +0,02 daje połowę klatki piersiowej.
+# Fraction of the frame height for the eye→shoulder segment. The eye line sits at 0.382, and the
+# bottom edge is k such segments lower: 0.382 + k·d = 1. CU k≈1.1 (shoulders), MCU k≈1.8
+# (half frame), MS k≈3.2 (band).
+# MCU = 0.36: calibration 2026-09-25 — at 0.34 the bottom edge landed on the solar
+# plexus; +0.02 gives half the chest.
 SHOTS = {"CU": 0.56, "MCU": 0.36, "MS": 0.19}
-AUTO_ZOOM_MAX = 4800.0      # powyżej 5000 krzywa zoomu niepewna, a detekcja słabnie
+AUTO_ZOOM_MAX = 4800.0      # above 5000 the zoom curve is uncertain and detection weakens
 CENTER, LEFT, RIGHT = "center", "left", "right"
 SIDE_X = {CENTER: 0.5, LEFT: GOLDEN, RIGHT: 1.0 - GOLDEN}
 
@@ -33,21 +34,21 @@ SIDE_X = {CENTER: 0.5, LEFT: GOLDEN, RIGHT: 1.0 - GOLDEN}
 @dataclass(frozen=True)
 class Shot:
     name: str
-    fraction: float         # część wysokości kadru na odcinek oczy→barki
+    fraction: float         # fraction of the frame height for the eye→shoulder segment
 
 
 def shot_for(profile, est: TargetEstimate | None = None) -> Shot:
-    """Polityka planu. Dziś: plan z profilu (``profile.shot``). ``est`` - na przyszłość
-    (plan dobierany do sytuacji: siedzi / stoi / chodzi)."""
+    """Shot policy. Today: shot from the profile (``profile.shot``). ``est`` - for the future
+    (shot chosen to match the situation: sitting / standing / walking)."""
     name = profile.shot if profile.shot in SHOTS else "MCU"
     return Shot(name, SHOTS[name])
 
 
 def aim(est: TargetEstimate, side: str, view: View) -> tuple[float, float]:
-    """Kąty kamery (pan, tilt), przy których głowa ``est`` jest w punkcie strony ``side``.
+    """Camera angles (pan, tilt) at which the head ``est`` is at the point of side ``side``.
 
-    Pole widzenia i znaki osi z ``view`` - podaj widok z *docelowym* zoomem, jeśli zoom
-    właśnie jedzie. Punkt jest liczony w obrazie, więc odwrócone osie niczego nie zmieniają.
+    Field of view and axis signs from ``view`` - pass the view with the *target* zoom if zoom
+    is moving. The point is computed in the image, so inverted axes change nothing.
     """
     sp = -1.0 if view.invert_pan else 1.0
     st = -1.0 if view.invert_tilt else 1.0
@@ -57,9 +58,10 @@ def aim(est: TargetEstimate, side: str, view: View) -> tuple[float, float]:
 
 def zoom_goal(est: TargetEstimate, shot: Shot, view: View,
               lo: float = 0.0, hi: float = AUTO_ZOOM_MAX) -> float | None:
-    """Wartość zoomu, przy której skala głowy zajmuje ``shot.fraction`` wysokości kadru.
+    """Zoom value at which the head scale occupies ``shot.fraction`` of the frame height.
 
-    Skala jest w kątach świata, więc wynik nie zależy od bieżącego zoomu. Bez skali - None.
+    The scale is in world angles, so the result does not depend on the current zoom. Without
+    scale - None.
     """
     if not est.head_scale:
         return None
@@ -69,14 +71,15 @@ def zoom_goal(est: TargetEstimate, shot: Shot, view: View,
 
 
 class SideSelector:
-    """Strona kadru: środek / lewy / prawy - ze zwłoką i histerezą.
+    """Frame side: center / left / right - with dwell and hysteresis.
 
-    * środek → bok: ``|yaw| > enter`` nieprzerwanie przez ``dwell`` s,
-    * bok → środek: ``|yaw| < exit_`` przez ``dwell`` s,
-    * lewy ↔ prawy wprost, po ``dwell`` s trwałego odwrócenia (krótkie obejrzenie się przez
-      ramię nie przerzuca kadru; środek tylko po trwałej twarzy na wprost),
-    * ``yaw > 0`` (nos na prawo w obrazie) → twarz w LEWYM punkcie - wolne miejsce przed nią,
-    * ``yaw is None`` (nosa nie widać) - bez zmian.
+    * center -> side: ``|yaw| > enter`` continuously for ``dwell`` s,
+    * side -> center: ``|yaw| < exit_`` for ``dwell`` s,
+    * left <-> right directly, after ``dwell`` s of a sustained turn (a brief glance over the
+      shoulder does not flip the frame; center only after a sustained face straight ahead),
+    * ``yaw > 0`` (nose to the right in the image) -> face at the LEFT point - free space in
+      front of it,
+    * ``yaw is None`` (nose not visible) - no change.
     """
 
     def __init__(self) -> None:
@@ -89,7 +92,7 @@ class SideSelector:
 
     @property
     def pending(self) -> str | None:
-        """Strona, na którą selektor właśnie się namyśla (zwłoka trwa), albo None."""
+        """The side the selector is currently deliberating (dwell in progress), or None."""
         return self._candidate
 
     def update(self, t: float, yaw: float | None, enter: float, exit_: float, dwell: float) -> str:
@@ -113,8 +116,8 @@ class SideSelector:
         if abs(yaw) < exit_:
             return CENTER
         if abs(yaw) > enter and facing != self.side:
-            # Wprost na przeciwną stronę. Przejście "przez środek" (spec do 2026-09-26)
-            # dawało dwa ruchy kamery - na środek i dopiero potem na drugi punkt. Przed
-            # obejrzeniem się przez ramię chroni zwłoka: nowa strona musi trwać `dwell`.
+            # Straight to the opposite side. Going "through the center" (spec before 2026-09-26)
+            # gave two camera moves - to the center and only then to the other point. The
+            # dwell protects against a glance over the shoulder: the new side must last ``dwell``.
             return facing
         return self.side

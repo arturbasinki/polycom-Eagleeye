@@ -1,14 +1,14 @@
-"""Symulator kamery i sceny - do testów zamkniętej pętli i odtwarzania sesji.
+"""Camera and scene simulator - for closed-loop tests and replaying sessions.
 
-``SimCamera`` udaje ControlDevice z fizyką głowicy zmierzoną w spike'u
-(2026-09-22): opóźnienie i krzywa S ruchu absolutnego, rozpędzanie i wybieg
-ruchu prędkościowego, odczyt zwracający pozycję zadaną, ignorowanie wpisu
-równego ostatniemu i brak nawrotu tiltu w locie. "Prawdę" liczy osobny
-HeadModel, który może mieć inną dynamikę niż model trackera.
+``SimCamera`` fakes a ControlDevice with the head physics measured in the spike
+(2026-09-22): latency and S-curve of an absolute move, acceleration and coast of a
+velocity move, a reading returning the commanded position, ignoring a write
+equal to the last one and no in-flight tilt reversal. A separate
+HeadModel computes the "truth", and it may have different dynamics than the tracker's model.
 
-``SimScene`` zamienia trajektorię głowy w kątach świata na obserwacje
-w pikselach - z szumem, skokami (twarz <-> sylwetka) i zanikiem przy
-rozmyciu, gdy głowica jedzie szybko.
+``SimScene`` turns a head trajectory in world angles into observations
+in pixels - with noise, jumps (face <-> body) and dropout on
+blur when the head moves fast.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ from .profiles import Profile
 from .v4l2 import (CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_TILT_ABSOLUTE,
                    CID_TILT_SPEED, CID_ZOOM_ABSOLUTE, Control)
 
-FRAME_LAG = 0.05          # klatka powstaje tyle przed chwilą jej obróbki
-BLUR_SPEED = deg(45)      # powyżej tej prędkości kątowej detektor nic nie widzi
+FRAME_LAG = 0.05          # the frame is created this long before its processing instant
+BLUR_SPEED = deg(45)      # above this angular speed the detector sees nothing
 _RANGES = {
     CID_PAN_ABSOLUTE: (-612000, 612000),
     CID_TILT_ABSOLUTE: (-108000, 324000),
@@ -46,10 +46,10 @@ class SimCamera:
         self.clock = clock
         self.truth = HeadModel(dynamics)
         self.values = {cid: 0 for cid in _RANGES}
-        self.real_moves = 0          # zapisy absolutne dalej niż 0,5° od poprzedniego
+        self.real_moves = 0          # absolute writes further than 0.5° from the previous one
         self.moves_by_axis = {"pan": 0, "tilt": 0}
-        self.interrupted = 0         # ... wysłane w trakcie cudzego ruchu absolutnego
-        self.vel_starts = 0          # ruszenia w trybie prędkości (z postoju)
+        self.interrupted = 0         # ... sent during someone else's absolute move
+        self.vel_starts = 0          # starts in velocity mode (from a standstill)
 
     def place(self, pan: float, tilt: float = 0.0) -> None:
         self.truth.reset("pan", pan)
@@ -85,7 +85,7 @@ class SimCamera:
             d = (value > 0) - (value < 0)
             current = self.truth.velocity_direction(axis)
             if axis == "tilt" and d and current and d != current:
-                d = 0                                   # tilt nie zawraca w locie - tylko staje
+                d = 0                                   # tilt does not reverse in flight - it only stops
             if d and not current:
                 self.vel_starts += 1
             self.truth.command_velocity(axis, d, t)
@@ -102,13 +102,13 @@ class SimScene:
                  yaw: Callable[[float], float | None] | None = None,
                  head_scale: Callable[[float], float] | None = None) -> None:
         self.path = path
-        # Klatka powstaje o tyle wcześniej, niż mówi jej znacznik czasu (uvcvideo stempluje
-        # ~koniec transmisji). W trakcie ruchu kamery daje to pomiar przesunięty w kierunku
-        # jazdy - zmierzone na kamerze 3-4° (sesja 20260923-003153).
+        # The frame is created this much earlier than its timestamp says (uvcvideo stamps
+        # ~the end of transmission). While the camera moves this gives a measurement shifted in the direction
+        # of travel - measured on the camera at 3-4° (session 20260923-003153).
         self.exposure_lag = exposure_lag
-        # Rozrzut tej zwłoki z klatki na klatkę (USB, MJPEG, rolling shutter). W bezruchu bez
-        # znaczenia, w trakcie jazdy daje błąd pomiaru rzędu prędkość kamery × rozrzut -
-        # na nagraniach 0,4-1° na klatkę wobec 0,04° w spoczynku (sesja 20260926-011024).
+        # The scatter of this lag from frame to frame (USB, MJPEG, rolling shutter). At rest it is
+        # irrelevant, while during a move it gives a measurement error of the order camera speed x scatter -
+        # in recordings 0.4-1° per frame vs 0.04° at rest (session 20260926-011024).
         self.lag_jitter = lag_jitter
         self.present = present or (lambda t: True)
         self.noise_px = noise_px
@@ -116,13 +116,13 @@ class SimScene:
         self.jump_px = jump_px
         self.frame = frame
         self.yaw = yaw
-        # Skala głowy w kątach świata (arcsec) - z niej scena liczy piksele klatki.
+        # Head scale in world angles (arcsec) - the scene computes the frame pixels from it.
         self.head_scale = head_scale
         self._rng = random.Random(seed)
         self._n = 0
 
     def head_pixel(self, t: float, camera: SimCamera, zoom: float) -> tuple[float, float] | None:
-        """Prawdziwe położenie głowy w kadrze (None = poza kadrem albo nieobecna)."""
+        """True head position in the frame (None = outside the frame or absent)."""
         if not self.present(t):
             return None
         view = View(*self.frame, zoom)
@@ -156,7 +156,7 @@ class SimScene:
 class SimResult:
     duration: float
     frame: tuple[int, int]
-    samples: list = field(default_factory=list)     # (t, x, y) prawdziwej głowy albo (t, None, None)
+    samples: list = field(default_factory=list)     # (t, x, y) of the true head or (t, None, None)
     real_moves: int = 0
     interrupted: int = 0
     vel_starts: int = 0
@@ -167,10 +167,10 @@ class SimResult:
         return self.real_moves / (self.duration / 60.0)
 
     def motion_starts_per_min(self) -> float:
-        """Każde ruszenie głowicy (ruch absolutny albo start jazdy) - miara szarpania.
+        """Every head start (an absolute move or the start of a travel) - a measure of jerkiness.
 
-        Widz widzi każde ruszenie i zatrzymanie, niezależnie od tego, czy rozkaz
-        był przerwany. Miara bez progu: rozstrzyga odbiór na żywo (Task 15).
+        The viewer sees every start and stop, regardless of whether the command
+        was interrupted. A threshold-free measure: it decides the live acceptance (Task 15).
         """
         return (self.real_moves + self.vel_starts) / (self.duration / 60.0)
 
@@ -178,7 +178,7 @@ class SimResult:
         return self.interrupted / (self.duration / 60.0)
 
     def outside_fraction(self, profile: Profile, t_from: float = 0.0) -> float:
-        """Część czasu z głową poza strefą wyzwalania (nieobecność w kadrze też się liczy)."""
+        """Fraction of time with the head outside the trigger zone (absence from the frame counts too)."""
         w, h = self.frame
         rows = [s for s in self.samples if s[0] >= t_from]
         bad = 0
@@ -221,6 +221,6 @@ def simulate(profile: Profile, scene: SimScene, seconds: float, *, dyn_true: Dyn
         point = scene.head_pixel(t, cam, core.actuator.zoom_value)
         result.samples.append((t, *(point if point else (None, None))))
     result.real_moves, result.interrupted, result.vel_starts = cam.real_moves, cam.interrupted, cam.vel_starts
-    result.core = core      # type: ignore[attr-defined] - do asercji w testach
+    result.core = core      # type: ignore[attr-defined] - for assertions in tests
     result.camera = cam     # type: ignore[attr-defined]
     return result

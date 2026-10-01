@@ -1,14 +1,14 @@
-"""Wykonawca: jedyne miejsce w silniku, które zapisuje kontrolki ruchu kamery.
+"""Actuator: the only place in the engine that writes the camera motion controls.
 
-* Ruch absolutny: firmware ignoruje wartość równą ostatnio zadanej, więc wtedy
-  najpierw wysyłamy wartość różną o 1" (niezauważalne), potem właściwą.
-* Ruch prędkościowy: wielkość wpisu nie ma znaczenia (zmierzone) - wpisujemy
-  tylko znak. Nie zawracamy w locie (tilt tego nie umie) - najpierw stop.
-* Strażnik: rozkaz prędkości jest ważny ``watchdog_s``. Jeśli pętla go nie
-  odświeży (np. zawiesiła się), osobny wątek wysyła stop. Kamera nie może
-  kręcić się sama przez zawieszony program.
+* Absolute move: the firmware ignores a value equal to the last commanded one, so then we
+  first send a value different by 1" (imperceptible), then the right one.
+* Velocity move: the magnitude of the write does not matter (measured) - we write
+  only the sign. We do not reverse in flight (tilt cannot do it) - stop first.
+* Watchdog: a velocity command is valid for ``watchdog_s``. If the loop does not
+  refresh it (e.g. it hung), a separate thread sends a stop. The camera must not
+  keep turning on its own because of a hung program.
 
-Każdy rozkaz trafia też do modelu głowicy, żeby ten wiedział, co zadano.
+Every command also goes to the head model, so that it knows what was commanded.
 """
 
 from __future__ import annotations
@@ -26,8 +26,9 @@ VEL_CTRL = {"pan": CID_PAN_SPEED, "tilt": CID_TILT_SPEED}
 VEL_MAGNITUDE = 1
 WATCHDOG_S = 0.3
 WATCHDOG_PERIOD = 0.05
-# Odczyt zoomu różny od ostatnio zadanego o więcej niż tyle (w spoczynku optyki) znaczy,
-# że zoom zmienił ktoś inny: suwak, przyciski, preset albo inny program.
+# A zoom reading differing from the last commanded one by more than this (while the optics
+# are still) means that someone else changed the zoom: a slider, the buttons, a preset or
+# another program.
 MANUAL_ZOOM_TOLERANCE = 50
 
 
@@ -45,15 +46,16 @@ class Actuator:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
-    # --- stan początkowy -------------------------------------------------
+    # --- initial state -------------------------------------------------
 
     def sync_from_device(self, t: float) -> None:
-        """Zatrzymuje ewentualny ruch i przyjmuje odczyt pozycji za prawdę.
+        """Stops any motion and accepts the position reading as truth.
 
-        Odczyt jest dokładny po ruchu absolutnym, a na starcie zakładamy, że
-        głowica stoi. Zerowanie prędkości zabija ruch pozostawiony przez inny
-        program (np. dawny wpis ``PAN_SPEED=15``). Tak samo zoom ciągły: kamera
-        pamięta go i jedzie optyką do oporu, a odczyt ``ZOOM_ABSOLUTE`` tego nie widzi.
+        The reading is accurate after an absolute move, and at startup we assume the
+        head is still. Zeroing the velocity kills motion left by another
+        program (e.g. an old ``PAN_SPEED=15`` write). Continuous zoom is the same: the camera
+        remembers it and drives the optics to the limit, while the ``ZOOM_ABSOLUTE`` reading
+        does not see it.
         """
         with self._lock:
             self.stop_all(t)
@@ -66,10 +68,11 @@ class Actuator:
             self.refresh_zoom()
 
     def refresh_zoom(self, t: float | None = None) -> bool:
-        """Czyta zoom z kamery. Z ``t``: zwraca True, gdy wartość zmienił ktoś inny.
+        """Reads the zoom from the camera. With ``t``: returns True when someone else changed
+        the value.
 
-        W trakcie jazdy optyki (``zoom_model``) nie oceniamy - odczyt bywa wtedy
-        niepewny, a różnica od wartości zadanej jest naturalna.
+        While the optics are moving (``zoom_model``) we do not judge - the reading is
+        sometimes uncertain then, and a difference from the commanded value is natural.
         """
         with self._lock:
             if t is not None and self.zoom_model.moving(t):
@@ -80,7 +83,7 @@ class Actuator:
             self.zoom_model.reset(value)
             return external
 
-    # --- rozkazy ------------------------------------------------------------
+    # --- commands -----------------------------------------------------------
 
     def _range(self, ctrl_id: int) -> tuple[float, float]:
         c = self.controls.control(ctrl_id)
@@ -107,7 +110,7 @@ class Actuator:
             if d == self._vel[axis]:
                 return
             if d and self._vel[axis]:
-                self._write_vel(axis, 0, t)      # bez nawrotu w locie
+                self._write_vel(axis, 0, t)      # no reversal in flight
                 return
             self._write_vel(axis, d, t)
 
@@ -134,7 +137,7 @@ class Actuator:
                     self.zoom(c.value, t)
 
     def stop_all(self, t: float) -> None:
-        """Zeruje prędkości obu osi - zawsze, także gdy nic nie jedzie."""
+        """Zeroes the velocities of both axes - always, even when nothing is moving."""
         with self._lock:
             for axis in ("pan", "tilt"):
                 self.controls.set(VEL_CTRL[axis], 0)
@@ -142,10 +145,10 @@ class Actuator:
                     self._vel[axis] = 0
                     self.head.command_velocity(axis, 0, t)
 
-    # --- strażnik -----------------------------------------------------------
+    # --- watchdog -----------------------------------------------------------
 
     def check_watchdog(self, t: float) -> bool:
-        """Zatrzymuje osie, których rozkaz prędkości wygasł. Zwraca, czy coś zatrzymał."""
+        """Stops axes whose velocity command expired. Returns whether it stopped anything."""
         stopped = False
         with self._lock:
             for axis in ("pan", "tilt"):
@@ -172,4 +175,4 @@ class Actuator:
             try:
                 self.check_watchdog(time.monotonic())
             except Exception:
-                pass    # błąd zapisu (np. odłączona kamera) obsłuży pętla trackera
+                pass    # a write error (e.g. disconnected camera) is handled by the loop

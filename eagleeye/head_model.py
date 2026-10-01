@@ -1,17 +1,17 @@
-"""Model głowicy: gdzie kamera NAPRAWDĘ patrzy w chwili t.
+"""Camera head model: where the camera ACTUALLY points at time t.
 
-Odczyt pan/tilt z kamery zwraca pozycję zadaną, a w trakcie ruchu
-prędkościowego nie zmienia się wcale (zmierzone 2026-09-22). Dlatego
-kąt przewidujemy z historii rozkazów i zmierzonej dynamiki firmware'u:
+Reading pan/tilt from the camera returns the commanded position, and during a
+velocity move it does not change at all (measured 2026-09-22). That is why we
+predict the angle from the command history and the measured firmware dynamics:
 
-* ruch absolutny - opóźnienie, potem krzywa S (profil t-Studenta) o czasie
-  ``abs_base + |odległość| / abs_speed``,
-* ruch prędkościowy - opóźnienie, liniowe rozpędzanie do stałej prędkości,
-  po rozkazie stop jeszcze opóźnienie i liniowe hamowanie (wybieg ~7°).
+* absolute move - latency, then an S-curve (Student's t profile) with duration
+  `abs_base + |distance| / abs_speed`,
+* velocity move - latency, linear acceleration to cruise speed, then after the
+  stop command another latency and linear deceleration (coast ~7°).
 
-Wartości domyślne to kalibracja tego egzemplarza zmierzona narzędziami
-``tools/measure_dynamics.py``, ``measure_zoom.py`` i ``measure_trajectory.py``;
-``config.json`` może je tylko nadpisać (inny egzemplarz kamery).
+The defaults are this unit's calibration measured with the
+``tools/measure_dynamics.py``, ``measure_zoom.py`` and ``measure_trajectory.py``
+tools; ``config.json`` can only override them (a different camera unit).
 """
 
 from __future__ import annotations
@@ -27,34 +27,34 @@ AXES = ("pan", "tilt")
 
 @dataclass(frozen=True)
 class Dynamics:
-    """Dynamika głowicy (arcsec, sekundy)."""
+    """Head dynamics (arcsec, seconds)."""
 
-    # Wartości domyślne = kalibracja TEGO egzemplarza (Polycom EagleEye IV), zmierzona na
-    # kamerze. Są w kodzie, a nie tylko w config.json: kalibracja nie może zniknąć razem
-    # z plikiem ustawień. config.json["dynamics"] tylko nadpisuje (inny egzemplarz).
-    # Pan, ruch absolutny i prędkościowy: tools/measure_dynamics.py (2026-09-23).
-    abs_latency: float = 0.1666        # od zapisu do ruszenia
-    abs_base: float = 0.4055           # stała część czasu przejazdu
-    abs_speed: float = 67.52 * 3600    # część zależna od odległości
-    abs_nu: float = 3.0                # kształt krzywej S
-    vel_speed: float = 40.67 * 3600    # prędkość przelotowa (wielkość rozkazu bez znaczenia)
+    # Defaults = calibration of THIS unit (Polycom EagleEye IV), measured on the
+    # camera. They live in code, not only in config.json: the calibration must not disappear
+    # with the settings file. config.json["dynamics"] only overrides (another unit).
+    # Pan, absolute and velocity move: tools/measure_dynamics.py (2026-09-23).
+    abs_latency: float = 0.1666        # from write to movement
+    abs_base: float = 0.4055           # constant part of the travel time
+    abs_speed: float = 67.52 * 3600    # the part that depends on distance
+    abs_nu: float = 3.0                # S-curve shape
+    vel_speed: float = 40.67 * 3600    # cruise speed (command magnitude irrelevant)
     vel_latency: float = 0.1657
-    vel_ramp: float = 0.30             # rozpędzanie do pełnej prędkości
-    vel_decel: float = 0.05            # hamowanie z pełnej prędkości do zera
+    vel_ramp: float = 0.30             # acceleration to full speed
+    vel_decel: float = 0.05            # deceleration from full speed to zero
     # Zoom: tools/measure_zoom.py (2026-09-25).
-    zoom_latency: float = 0.142        # od zapisu kontrolki do ruszenia optyki
-    zoom_base: float = 0.201           # stała część czasu jazdy
-    zoom_speed: float = 3069.5         # jednostki kontrolki zoomu na sekundę
-    # Tilt, ruch absolutny: tools/measure_trajectory.py (2026-09-26). Wolniejszy niż pan -
-    # model z parametrami pan mylił się w trakcie jazdy o 1,6° RMS (tilt na raty, oscylacja);
-    # z tymi 0,21° RMS. None = jak pan (tylko dla innego egzemplarza, świadomie).
+    zoom_latency: float = 0.142        # from control write to optics movement
+    zoom_base: float = 0.201           # constant part of the travel time
+    zoom_speed: float = 3069.5         # zoom control units per second
+    # Tilt, absolute move: tools/measure_trajectory.py (2026-09-26). Slower than pan -
+    # a model with the pan parameters erred during travel by 1.6° RMS (tilt in instalments,
+    # oscillation); with these 0.21° RMS. None = same as pan (only for another unit, deliberately).
     tilt_abs_latency: float | None = 0.10
     tilt_abs_base: float | None = 0.80
     tilt_abs_speed: float | None = 66.5 * 3600
     tilt_abs_nu: float | None = 0.7
 
     def abs_params(self, axis: str = "pan") -> tuple[float, float, float, float]:
-        """(opóźnienie, czas bazowy, prędkość, nu) ruchu absolutnego osi."""
+        """Absolute move (latency, base time, speed, nu) of the axis."""
         pan = (self.abs_latency, self.abs_base, self.abs_speed, self.abs_nu)
         if axis != "tilt":
             return pan
@@ -69,7 +69,7 @@ class Dynamics:
         return base + abs(distance) / speed
 
     def coast_distance(self) -> float:
-        """Droga od rozkazu stop przy pełnej prędkości do zatrzymania."""
+        """Distance from the stop command at full speed to a standstill."""
         return self.vel_speed * (self.vel_latency + self.vel_decel / 2.0)
 
     def coast_time(self) -> float:
@@ -80,11 +80,11 @@ class Dynamics:
 
 
 def dynamics_from_settings(values: dict | None) -> Dynamics:
-    """``config.json["dynamics"]`` -> Dynamics; nieznane klucze są pomijane."""
+    """``config.json["dynamics"]`` -> Dynamics; unknown keys are ignored."""
     names = {f.name for f in dataclasses.fields(Dynamics)}
     out = {}
     for k, v in (values or {}).items():
-        # Brak wartości albo śmieć w pliku nie może skasować kalibracji z kodu.
+        # A missing value or junk in the file must not erase the calibration from the code.
         if k not in names or v is None:
             continue
         try:
@@ -95,10 +95,10 @@ def dynamics_from_settings(values: dict | None) -> Dynamics:
 
 
 def velocity_displacement(dyn: Dynamics, elapsed: float, stop_after: float | None) -> float:
-    """Droga (arcsec, bez znaku) po ``elapsed`` s od rozkazu jazdy.
+    """Distance (arcsec, unsigned) after ``elapsed`` s from the move command.
 
-    ``stop_after`` - po ilu sekundach od rozkazu jazdy wydano stop (None = jedzie).
-    Oba rozkazy mają to samo opóźnienie, więc liczymy w czasie "efektywnym".
+    ``stop_after`` - after how many seconds from the move command the stop was issued (None = moving).
+    Both commands have the same latency, so we compute in "effective" time.
     """
     v_max = dyn.vel_speed
     ramp = max(1e-6, dyn.vel_ramp)
@@ -122,7 +122,8 @@ def velocity_displacement(dyn: Dynamics, elapsed: float, stop_after: float | Non
 
 
 def velocity_stop_elapsed(dyn: Dynamics, stop_after: float) -> float:
-    """Po ilu sekundach od rozkazu jazdy oś stoi, jeśli stop wydano po ``stop_after``."""
+    """After how many seconds from the move command the axis stands still, if the stop was issued
+    after ``stop_after``."""
     ts = max(0.0, stop_after)
     accel = dyn.vel_speed / max(1e-6, dyn.vel_ramp)
     decel = dyn.vel_speed / max(1e-6, dyn.vel_decel)
@@ -146,7 +147,7 @@ class _Vel:
 
 
 class HeadModel:
-    """Przewiduje kąt osi z rozkazów. Nie dotyka sprzętu."""
+    """Predicts the axis angle from commands. Does not touch the hardware."""
 
     def __init__(self, dynamics: Dynamics = Dynamics(), pan: float = 0.0, tilt: float = 0.0) -> None:
         self.dynamics = dynamics
@@ -155,7 +156,7 @@ class HeadModel:
         self._exact = {"pan": True, "tilt": True}
 
     def reset(self, axis: str, angle: float) -> None:
-        """Przyjmij ``angle`` za pewną, nieruchomą pozycję osi."""
+        """Take ``angle`` as a certain, stationary axis position."""
         self._rest[axis] = float(angle)
         self._motion[axis] = None
         self._exact[axis] = True
@@ -205,7 +206,7 @@ class HeadModel:
         return t - m.t0 < velocity_stop_elapsed(self.dynamics, m.t_stop - m.t0)
 
     def progress(self, axis: str, t: float) -> float:
-        """Postęp ruchu absolutnego 0..1 (1 = brak ruchu albo koniec)."""
+        """Progress of the absolute move 0..1 (1 = no movement or the end)."""
         m = self._motion[axis]
         if isinstance(m, _Abs):
             return min(1.0, max(0.0, (t - m.t0 - self.dynamics.abs_latency_of(axis)) / m.duration))
@@ -214,7 +215,8 @@ class HeadModel:
         return 1.0
 
     def rest_angle(self, axis: str, t: float) -> float:
-        """Gdzie oś stanie, jeśli od ``t`` nie będzie nowych rozkazów (jazda dostaje stop w ``t``)."""
+        """Where the axis will stop if there are no new commands from ``t`` (the move gets a
+        stop at ``t``)."""
         m = self._motion[axis]
         if m is None:
             return self._rest[axis]
@@ -240,11 +242,11 @@ class HeadModel:
 
 
 class ZoomModel:
-    """Kiedy jedzie optyka zoomu.
+    """When the zoom optics travel.
 
-    Wartość zadana jest znana od razu, ale obraz zmienia się jeszcze przez
-    ``zoom_latency + zoom_duration`` - klatki z tego czasu mają inne pole widzenia,
-    niż mówi kontrolka, i dają złe kąty świata.
+    The target value is known immediately, but the image changes for another
+    ``zoom_latency + zoom_duration`` - frames from that time have a different field of view
+    than the control says, and yield wrong world angles.
     """
 
     def __init__(self, dynamics: Dynamics = Dynamics(), value: float = 0.0) -> None:
@@ -253,7 +255,7 @@ class ZoomModel:
         self._until = float("-inf")
 
     def reset(self, value: float) -> None:
-        """Przyjmij ``value`` za pewną, nieruchomą pozycję optyki."""
+        """Take ``value`` as a certain, stationary position of the optics."""
         self.value = float(value)
         self._until = float("-inf")
 

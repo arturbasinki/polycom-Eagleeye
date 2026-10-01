@@ -1,15 +1,16 @@
-"""Tożsamość osób między klatkami: ścieżki w kątach świata + kolor ubrania.
+"""Person identity across frames: tracks in world angles + clothing colour.
 
-RTMO-s zwraca w każdej klatce listę osób bez pamięci. ``PersonTracker`` nadaje im
-stałe numery, a ``TargetSelection`` pilnuje, którą z nich użytkownik wybrał.
+RTMO-s returns a list of people in each frame with no memory. ``PersonTracker`` gives them
+stable numbers, and ``TargetSelection`` keeps track of which one the user selected.
 
-Ścieżki żyją w kątach świata (arcsec, ``View.pixel_to_world``), nie w pikselach:
-kamera się rusza, a stojąca osoba ma stałe położenie w świecie. Odległości mierzymy
-w wysokościach ciała osoby (rozmiar ramki w arcsec), więc progi nie zależą od zoomu
-ani od odległości od kamery.
+Tracks live in world angles (arcsec, ``View.pixel_to_world``), not in pixels:
+the camera moves, while a standing person has a fixed position in the world. We measure
+distances in body heights of the person (box size in arcsec), so the thresholds do not
+depend on zoom or on the distance from the camera.
 
-Wygląd to histogram HSV tułowia (między barkami a biodrami z punktów COCO). Kolor
-ubrania rozstrzyga skrzyżowania i powrót po utracie; bez nowego modelu.
+Appearance is the HSV histogram of the torso (between the shoulders and hips from the
+COCO keypoints). The clothing colour decides crossings and recovery after a loss;
+without a new model.
 """
 
 from __future__ import annotations
@@ -27,53 +28,53 @@ from .perception import KEYPOINT_MIN_CONF, head_point
 
 ToWorld = Callable[[float, float], tuple[float, float]]
 
-# Bramka położenia (w wysokościach ciała): stała część + przyrost z czasem nieobecności.
+# Position gate (in body heights): constant part + growth with absence time.
 GATE_BASE = 0.6
-GATE_SPEED = 1.0                 # ~chód: 0,8 wysokości ciała na sekundę
+GATE_SPEED = 1.0                 # ~walking: 0.8 body heights per second
 GATE_MAX = 3.0
-SIZE_MAX = 0.7                   # |ln(rozmiar wykrycia / rozmiar ścieżki)|
-APP_NEUTRAL = 0.35               # koszt wyglądu, gdy brak histogramu
-APP_MAX_NEAR = 0.6               # próg Bhattacharyyi tuż po utracie...
-APP_MAX_FAR = 0.4                # ...i po APP_FAR_S sekundach nieobecności
+SIZE_MAX = 0.7                   # |ln(detection size / track size)|
+APP_NEUTRAL = 0.35               # appearance cost when there is no histogram
+APP_MAX_NEAR = 0.6               # Bhattacharyya threshold just after a loss...
+APP_MAX_FAR = 0.4                # ...and after APP_FAR_S seconds of absence
 APP_FAR_S = 3.0
 APP_WEIGHT = 1.0
 SIZE_WEIGHT = 0.5
-AMBIGUITY = 0.1                  # przejęcie zawieszonej ścieżki wymaga tej przewagi w WYGLĄDZIE (nie w odległości)
-PREDICT_MAX_S = 0.5              # dłużej nie ekstrapolujemy prędkości
-ALPHA, BETA = 0.6, 0.3           # filtr alfa-beta położenia
-RETAIN_S = 1.5                   # tyle żyje ścieżka bez wykrycia (poza chronioną)
-HIST_MIX = 0.15                  # udział nowej klatki w uśrednianym histogramie
+AMBIGUITY = 0.1                  # taking over a suspended track requires this APPEARANCE advantage
+PREDICT_MAX_S = 0.5              # we do not extrapolate velocity any longer
+ALPHA, BETA = 0.6, 0.3           # position alpha-beta filter
+RETAIN_S = 1.5                   # how long a track lives without a detection (except a protected one)
+HIST_MIX = 0.15                  # share of the new frame in the averaged histogram
 HIST_BINS = (6, 3, 3)            # H, S, V
-MIN_ROI = 6                      # px; mniejszy wycinek = brak histogramu
+MIN_ROI = 6                      # px; a smaller crop = no histogram
 
 
 @dataclass
 class Track:
     id: int
-    pan: float                   # punkt głowy w świecie [arcsec]
+    pan: float                   # head point in the world [arcsec]
     tilt: float
-    size: float                  # wysokość ramki w świecie [arcsec]
+    size: float                  # box height in the world [arcsec]
     last_seen: float
     v_pan: float = 0.0
     v_tilt: float = 0.0
     hist: np.ndarray | None = None
-    det: Detection | None = None     # wykrycie dopasowane w TEJ klatce; None = ścieżka zawieszona
-    head_px: tuple[float, float] = (0.0, 0.0)     # ostatnia znana głowa i ramka (px klatki)
+    det: Detection | None = None     # detection matched in THIS frame; None = track suspended
+    head_px: tuple[float, float] = (0.0, 0.0)     # last known head and box (frame px)
     box: tuple[int, int, int, int] = (0, 0, 0, 0)
     misses: int = 0
 
 
 @dataclass(frozen=True)
 class TrackInfo:
-    """Niezmienna migawka ścieżki dla interfejsu (TrackerState)."""
+    """Immutable snapshot of the track for the UI (TrackerState)."""
     id: int
-    box: tuple[int, int, int, int]      # ostatnia znana ramka (przy zawieszonej - z ostatniej klatki)
+    box: tuple[int, int, int, int]      # last known box (for a suspended one - from the last frame)
     head: tuple[float, float]
     visible: bool
 
 
 def torso_hist(frame_bgr: np.ndarray, det: Detection) -> np.ndarray | None:
-    """Znormalizowany histogram HSV tułowia albo None, gdy nie da się go wyciąć."""
+    """Normalised HSV histogram of the torso or None when it cannot be cropped."""
     fh, fw = frame_bgr.shape[:2]
     kps = det.keypoints or ()
 
@@ -89,10 +90,10 @@ def torso_hist(frame_bgr: np.ndarray, det: Detection) -> np.ndarray | None:
             y1 = sum(p[1] for p in hips) / len(hips)
         else:
             y1 = y0 + 1.2 * (x1 - x0)
-    else:                            # bez barków: pas pod głową, środek ramki
+    else:                            # without shoulders: a strip below the head, centre of the box
         x0, x1 = det.x + 0.2 * det.w, det.x + 0.8 * det.w
         y0, y1 = det.y + 0.15 * det.h, det.y + 0.55 * det.h
-    # ściągamy obszar do środka - brzegi łapią tło
+    # we pull the area towards the centre - the edges catch the background
     mx, my = 0.2 * (x1 - x0), 0.15 * (y1 - y0)
     xa, xb = int(max(0, x0 + mx)), int(min(fw, x1 - mx))
     ya, yb = int(max(0, y0 + my)), int(min(fh, y1 - my))
@@ -120,10 +121,10 @@ class PersonTracker:
 
     def update(self, dets: list[Detection], frame_bgr: np.ndarray, t: float, to_world: ToWorld,
                protect: int | None = None, protect_s: float = 0.0) -> list[Track]:
-        """Przypisuje wykrycia do ścieżek; zwraca wszystkie żywe (widoczne i zawieszone).
+        """Assigns detections to tracks; returns all live ones (visible and suspended).
 
-        ``protect``/``protect_s``: ścieżka wybrana przez użytkownika żyje bez wykrycia
-        do ``protect_s`` sekund (reszta - ``RETAIN_S``)."""
+        ``protect``/``protect_s``: the track selected by the user lives without a detection
+        for up to ``protect_s`` seconds (the rest - ``RETAIN_S``)."""
         meas = []
         for d in dets:
             hx, hy = head_point(d)
@@ -133,7 +134,7 @@ class PersonTracker:
             meas.append((d, pan, tilt, max(size, 1.0), torso_hist(frame_bgr, d), (hx, hy)))
         tracks = list(self.tracks.values())
         cost: dict[tuple[int, int], float] = {}
-        looks: dict[tuple[int, int], float] = {}     # sam koszt wyglądu tych par
+        looks: dict[tuple[int, int], float] = {}     # just the appearance cost of those pairs
         for ti, tr in enumerate(tracks):
             gap = max(0.0, t - tr.last_seen)
             dt = min(gap, PREDICT_MAX_S)
@@ -182,9 +183,9 @@ class PersonTracker:
 
     @staticmethod
     def _ambiguous(looks, ti: int, di: int) -> bool:
-        """Zawieszoną ścieżkę przejmujemy tylko przy wyraźnej przewadze rywala w wyglądzie.
-        Po kilku sekundach położenie waży mało (bramka rośnie), więc odległość nie może
-        rozstrzygać między dwiema osobami w podobnym ubraniu."""
+        """A suspended track is taken over only with a clear appearance advantage of the rival.
+        After a few seconds position weighs little (the gate grows), so distance cannot
+        decide between two people in similar clothes."""
         mine = looks[(ti, di)]
         return any((t2, d2) != (ti, di) and (t2 == ti or d2 == di) and abs(c2 - mine) < AMBIGUITY
                    for (t2, d2), c2 in looks.items())
@@ -218,7 +219,7 @@ def track_infos(tracks: list[Track]) -> tuple[TrackInfo, ...]:
 
 
 def track_at(infos: tuple[TrackInfo, ...], x: float, y: float) -> int | None:
-    """ID widocznej osoby pod punktem klatki; przy nakładających się ramkach - o bliższej głowie."""
+    """ID of the visible person under the frame point; with overlapping boxes - the one with the closer head."""
     best, best_d = None, math.inf
     for info in infos:
         bx, by, bw, bh = info.box
@@ -230,11 +231,11 @@ def track_at(infos: tuple[TrackInfo, ...], x: float, y: float) -> int | None:
 
 
 AUTO, SELECTED, SUSPENDED = "auto", "selected", "suspended"
-GAP_S = 0.5                      # tyle bez wykrycia wybrana jeszcze "widoczna" (ekstrapolacja)
+GAP_S = 0.5                      # this long without a detection the selected one stays "visible"
 
 
 class TargetSelection:
-    """Wybór użytkownika: AUTO -> WYBRANA <-> ZAWIESZONA -> AUTO po ``hold_s``."""
+    """User selection: AUTO -> SELECTED <-> SUSPENDED -> AUTO after ``hold_s``."""
 
     def __init__(self, hold_s: float = 6.0) -> None:
         self.hold_s = hold_s
@@ -255,7 +256,7 @@ class TargetSelection:
         return max(0.0, self.hold_s - (t - self._seen))
 
     def resolve(self, tracks: list[Track], t: float) -> Track | None:
-        """Ścieżka wybranej osoby, gdy jest widoczna; inaczej None. Zmienia stan."""
+        """The selected person's track when visible; otherwise None. Changes state."""
         if self.state == AUTO:
             return None
         tr = next((x for x in tracks if x.id == self.track_id), None)

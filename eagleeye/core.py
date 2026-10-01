@@ -1,7 +1,7 @@
-"""Rdzeń śledzenia: jeden krok potoku, wspólny dla prawdziwej kamery i symulatora.
+"""Tracking core: one step of the pipeline, shared by the real camera and the simulator.
 
-obserwacja (piksele, czas klatki) -> kąt świata (przez model głowicy w chwili
-klatki) -> filtr -> reżyser -> wykonawca.
+observation (pixels, frame time) -> world angle (through the head model at the frame
+time) -> filter -> director -> actuator.
 """
 
 from __future__ import annotations
@@ -46,26 +46,29 @@ class TrackingCore:
     def step(self, t: float, obs: Observation | None, frame_w: int, frame_h: int) -> list[Command]:
         view = self.view(frame_w, frame_h)
         self.last_world = None
-        # Klatki z czasu ruchu absolutnego pomijamy: ich znacznik czasu jest późniejszy niż
-        # naświetlenie, a model krzywej S nie jest idealny - kąt świata wychodził przesunięty
-        # o 3-4° w kierunku jazdy (sesja 20260923-003153). Na czas ruchu reżyser dostaje
-        # ostatnią pewną pozycję celu. Tylko w profilach z hold_during_moves (rozmowa):
-        # idący cel (prezentacja) potrzebuje pomiarów także w ruchu.
+        # We skip frames from an absolute move: their timestamp is later than the
+        # exposure, and the S-curve model is not perfect - the world angle came out
+        # shifted by 3-4° in the direction of travel (session 20260923-003153). During the
+        # move the director gets the last certain target position. Only in profiles with
+        # hold_during_moves (talk): a walking target (presentation) needs measurements in
+        # motion too.
         hold = self.director.profile.hold_during_moves
         zoom = self.actuator.zoom_model
-        # Klatki z czasu jazdy zoomu też pomijamy (w każdym profilu): pole widzenia z kontrolki
-        # nie jest wtedy prawdziwe, a błąd skaluje całą odległość punktu od środka kadru.
+        # We also skip frames from a zoom move (in every profile): the field of view from the
+        # control is not true then, and the error scales the whole distance of the point from the
+        # frame centre.
         if (obs is not None and not (hold and self._absolute_move(obs.t))
                 and not zoom.moving(obs.t)):
-            cam_pan, cam_tilt = self.head.angles(obs.t)     # gdzie patrzyła kamera w chwili klatki
+            cam_pan, cam_tilt = self.head.angles(obs.t)     # where the camera looked at frame time
             world = view.pixel_to_world(obs.x, obs.y, cam_pan, cam_tilt)
             scale = None if obs.head_scale_px is None else obs.head_scale_px * view.arcsec_per_px
             if self.filter.update(obs.t, *world, yaw=obs.yaw, head_scale=scale,
                                   cam_speed=self._cam_speed(obs.t)):
                 self.last_world = world
-        # Trzymamy też chwilę po dojeździe: ostatni pomiar jest sprzed całego ruchu, więc
-        # bez tego cel "ginął" dokładnie w chwili dojazdu i reżyser wysyłał drugi ruch
-        # (na ostatni azymut) - zgłoszone z aplikacji jako dojeżdżanie na dwa razy.
+        # We also hold for a moment after arrival: the last measurement is from before the
+        # whole move, so without this the target "vanished" exactly at the moment of arrival
+        # and the director sent a second move (to the last azimuth) - reported from the app as
+        # arriving in two goes.
         if (hold and self._absolute_move(t)) or zoom.moving(t):
             self._hold_until = t + self.filter.settings.lost_after
         est = self.filter.estimate(t, hold=t <= self._hold_until, capped=hold)
@@ -75,12 +78,13 @@ class TrackingCore:
         return cmds
 
     def _cam_speed(self, t: float) -> tuple[float, float]:
-        """Prędkość osi kamery (pan, tilt) w chwili ``t`` w ruchu absolutnym [arcsec/s].
+        """Camera axis speed (pan, tilt) at time ``t`` during an absolute move [arcsec/s].
 
-        Tylko ruch absolutny: niepewność siedzi w krzywej S (opóźnienie, kształt - błąd modelu
-        0,2-0,4° RMS, tools/measure_trajectory.py). Jazda prędkościowa ma stałą prędkość i jest
-        modelowana dobrze, a podążanie potrzebuje szybkiej estymaty prędkości celu - większa
-        wariancja pomiaru opóźniała ją (symulacja chodzenia: 15% vs 18% czasu poza strefą).
+        Absolute moves only: the uncertainty sits in the S-curve (latency, shape - model error
+        0.2-0.4° RMS, tools/measure_trajectory.py). A velocity move has constant speed and is
+        modelled well, while following needs a quick target speed estimate - a larger
+        measurement variance delayed it (walking simulation: 15% vs 18% of the time outside the
+        zone).
         """
         h = 0.02
         a, b = self.head.angles(t - h), self.head.angles(t + h)

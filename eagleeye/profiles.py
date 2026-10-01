@@ -1,7 +1,7 @@
-"""Profile śledzenia: "rozmowa" (spokój) i "prezentacja" (nadążanie).
+"""Tracking profiles: "talk" (calm) and "presentation" (following).
 
-Wartości startowe ze specyfikacji; w interfejsie da się nadpisać tylko pola
-z ``TUNABLE`` (sekcja "zaawansowane").
+Starting values from the specification; in the UI only the fields
+in ``TUNABLE`` can be overridden (the "advanced" section).
 """
 
 from __future__ import annotations
@@ -16,36 +16,38 @@ from .geometry import deg
 @dataclass(frozen=True)
 class Profile:
     name: str
-    trigger_pan: float       # strefa wyzwalania: ułamek szerokości kadru od punktu kadrowania
-    trigger_tilt: float      # ... i wysokości kadru
-    dwell: float             # s nieprzerwanie poza strefą, zanim kamera ruszy
-    lead: bool               # wyprzedzenie ruchu o prędkość celu
-    follow: bool             # podążanie prędkościowe (tylko pan)
-    follow_speed: float      # próg prędkości celu do podążania [arcsec/s]
-    ladder_max: int          # ostatni krok drabiny utraty celu
-    ladder_step_time: float  # s między krokami drabiny
-    # Pomiary z klatek zrobionych w trakcie ruchu absolutnego kamery są przesunięte
-    # o 3-4° w kierunku jazdy. Gdy cel po ruchu stoi (rozmowa), lepiej je pominąć
-    # i trzymać ostatnią pewną pozycję; gdy cel idzie (prezentacja), pominięcie
-    # oślepia tracker akurat wtedy, gdy cel się przesuwa.
+    trigger_pan: float       # trigger zone: frame-width fraction from the framing point
+    trigger_tilt: float      # ... and frame height
+    dwell: float             # s continuously outside the zone before the camera moves
+    lead: bool               # lead the movement by the target velocity
+    follow: bool             # velocity following (pan only)
+    follow_speed: float      # target speed threshold for following [arcsec/s]
+    ladder_max: int          # last step of the target loss ladder
+    ladder_step_time: float  # s between ladder steps
+    # Measurements from frames taken during an absolute camera move are shifted
+    # by 3-4° in the direction of travel. When the target stands still after the move (talk),
+    # it is better to skip them and hold the last certain position; when the target walks
+    # (presentation), skipping them blinds the tracker exactly when the target is moving.
     hold_during_moves: bool = False
-    # Doganianie celu, który zniknął przy krawędzi w ruchu (krok 1 drabiny). W chwili
-    # utraty prędkość filtra bywa bezwartościowa (luki w detekcji) - w rozmowie strzelało
-    # 54-61° za daleko, a ostatni azymut trafiał w osobę (sesja 20260923-020939).
+    # Catching up with a target that vanished at the edge while moving (ladder step 1). At the
+    # moment of loss the filter velocity is sometimes worthless (detection gaps) - in talk it
+    # fired 54-61° too far, while the last azimuth hit the person (session 20260923-020939).
     catch_up: bool = True
-    # Kompozycja (framing.py): plan i strona kadru. Pion wyznacza linia złotego podziału
-    # (framing.GOLDEN) - wspólna dla profili, dawne head_height (0,375 / 0,30) usunięte.
-    shot: str = "MCU"        # plan: framing.SHOTS
-    side_enter: float = 0.35 # |yaw| powyżej - twarz odwrócona, kadr na punkt boczny
-    side_exit: float = 0.20  # |yaw| poniżej - twarz na wprost, powrót na środek
-    side_dwell: float = 1.5  # s trwałego odwrócenia (albo powrotu), zanim zmieni się strona
+    # Composition (framing.py): shot and frame side. The vertical is set by the
+    # golden-ratio line (framing.GOLDEN) - shared by the profiles; the former head_height
+    # (0.375 / 0.30) is removed.
+    shot: str = "MCU"        # shot: framing.SHOTS
+    side_enter: float = 0.35 # |yaw| above - face turned away, frame to the side point
+    side_exit: float = 0.20  # |yaw| below - face straight ahead, return to centre
+    side_dwell: float = 1.5  # s of a sustained turn (or return) before the side changes
 
 
-# trigger_tilt = 0,12 (przegląd 2026-09-26): strefa wyzwalania to próg reakcji na *duży*
-# rozjazd, a dokładność kompozycji zapewnia pasmo 5% z cichym re-fitem (director.
-# COMPOSITION_BAND/REFIT_DWELL). Kalibracyjne 0,05 (≈2°) było równe pasmu, więc re-fit
-# w pionie nie istniał, a każde kiwnięcie głową (±2°) po zwłoce 0,2 s w prezentacji
-# ruszało tilt - wprost na szczyt kiwnięcia, a drugi ruch wracał (sesja 20260926-011024).
+# trigger_tilt = 0.12 (review 2026-09-26): the trigger zone is the reaction threshold for a
+# *large* deviation, while composition accuracy is provided by the 5% band with a quiet
+# re-fit (director.COMPOSITION_BAND/REFIT_DWELL). The calibration value 0.05 (≈2°) was equal
+# to the band, so a vertical re-fit did not exist, and every head nod (±2°) after the 0.2 s
+# dwell in presentation moved the tilt - straight onto the peak of the nod, and a second move
+# brought it back (session 20260926-011024).
 TALK = Profile("talk", 0.15, 0.12, 0.8, False, False, deg(8), 2, 4.0,
                hold_during_moves=True, catch_up=False, shot="MCU")
 PRESENTATION = Profile("presentation", 0.26, 0.12, 0.2, True, True, deg(8), 4, 1.5, shot="MS")

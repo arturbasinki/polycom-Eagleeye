@@ -1,14 +1,14 @@
-"""Filtr celu: pozycja i prędkość głowy w kątach świata.
+"""Target filter: the target head position and velocity in world angles.
 
-Dwa niezależne filtry Kalmana (pan, tilt) z modelem stałej prędkości.
-Kąt świata nie zmienia się, gdy kamera się obraca, więc pomiary z trakcie
-ruchu głowicy są tak samo dobre jak w bezruchu - pod warunkiem, że pozycja
-głowicy w chwili klatki pochodzi z modelu głowicy.
+Two independent Kalman filters (pan, tilt) with a constant-velocity model.
+The world angle does not change when the camera turns, so measurements taken
+while the head moves are just as good as when it is still - provided the head
+position at the frame time comes from the head model.
 
-Bramkowanie zastępuje dawny ``max_target_jump_px``: pomiar dalej niż
-``gate_sigmas`` odchyleń od przewidywania jest odrzucany (detektor raz
-obejmuje całą sylwetkę, raz jej część). Kilka takich pomiarów z rzędu
-znaczy, że cel naprawdę jest gdzie indziej - wtedy filtr startuje od nowa.
+Gating replaces the former ``max_target_jump_px``: a measurement further than
+``gate_sigmas`` standard deviations from the prediction is rejected (the detector covers
+the whole body at one moment and part of it at another). A few such measurements in a
+row mean the target really is elsewhere - then the filter restarts.
 """
 
 from __future__ import annotations
@@ -20,43 +20,44 @@ from .geometry import deg
 
 @dataclass(frozen=True)
 class FilterSettings:
-    # Szum pomiaru i model ruchu człowieka: estymacja największej wiarygodności z innowacji
-    # filtra na 158 tys. pomiarów z 9 sesji (odcinki bez ruchu kamery, 2026-09-26). Dawne
-    # 0,22° / 1°/s² robiły z filtra ~15× za bezwładny: spóźniał się na starcie ruchu
-    # i przestrzeliwał po zatrzymaniu (estymata 2-5° za stojącą osobą) - reżyser dojeżdżał
-    # schodami i wracał. Filtr ma mówić prawdę o celu; o tym, czy kamera ma reagować,
-    # decyduje reżyser (strefa, zwłoka, pasmo kompozycji, osiadanie celu).
-    meas_sigma: float = 300.0          # szum punktu głowy: 2× MLE (0,04°) - zapas na gorsze światło i detekcję
-    accel_sigma: float = deg(12.0)     # jak gwałtownie człowiek zmienia prędkość w poziomie [arcsec/s²]
-    accel_sigma_tilt: float = deg(6.0) # ... i w pionie
+    # Measurement noise and human motion model: maximum-likelihood estimate from the filter
+    # innovations over 158k measurements from 9 sessions (camera-still segments, 2026-09-26). The old
+    # 0.22° / 1°/s² values made the filter ~15x too sluggish: it lagged at the start of a move
+    # and overshot after stopping (estimate 2-5° behind a stationary person) - the director arrived
+    # in steps and came back. The filter must tell the truth about the target; whether the camera
+    # should react is decided by the director (zone, dwell, composition band, target settling).
+    meas_sigma: float = 300.0          # head point noise: 2x MLE (0.04°) - headroom for poor lighting
+    accel_sigma: float = deg(12.0)     # how abruptly a person changes horizontal speed [arcsec/s²]
+    accel_sigma_tilt: float = deg(6.0) # ... and vertically
     gate_sigmas: float = 12.0
     reset_after_rejects: int = 5
-    # ... albo gdy od ostatniego przyjętego pomiaru minęło tyle, a pomiary nadal przychodzą
-    # (odrzucane). Musi być krótsze niż lost_after - inaczej przy wolniejszej detekcji
-    # (5 klatek przy 10 Hz = 0,5 s) cel "ginął", choć był widoczny, i reżyser zaczynał
-    # drabinę utraty zamiast przejść do nowej pozycji.
+    # ... or when this much time has passed since the last accepted measurement while measurements
+    # still arrive (rejected). It must be shorter than lost_after - otherwise with slower detection
+    # (5 frames at 10 Hz = 0.5 s) the target "vanished" although it was visible, and the director
+    # started the loss ladder instead of moving to the new position.
     reset_after_s: float = 0.25
-    lost_after: float = 0.4            # s bez przyjętego pomiaru = cel utracony
-    # Przewidywanie ponad ostatni pomiar najwyżej o tyle. Dłuższa ekstrapolacja starej
-    # prędkości przez luki w detekcji (rozmycie w trakcie jazdy kamery) wypychała
-    # estymatę 5-7° za zatrzymaną osobę i kamera dojeżdżała drugim ruchem.
+    lost_after: float = 0.4            # s without an accepted measurement = target lost
+    # Prediction beyond the last measurement by at most this much. Longer extrapolation of the old
+    # velocity through detection gaps (blur while the camera moves) pushed the
+    # estimate 5-7° behind a stationary person and the camera arrived with a second move.
     max_extrapolation: float = 0.1
-    # Gdy pomiary są celowo wstrzymane (ruch absolutny kamery), estymata trzyma się
-    # ostatniej pozycji najwyżej tyle sekund, zamiast uznawać cel za utracony.
+    # When measurements are deliberately paused (absolute camera move), the estimate holds the
+    # last position for at most this many seconds, instead of treating the target as lost.
     max_hold: float = 3.0
-    attr_alpha: float = 0.3            # wygładzanie yaw i skali głowy (średnia wykładnicza)
-    # Pomiar z klatki zrobionej w trakcie ruchu kamery: kąt świata = kąt głowicy z modelu
-    # w chwili klatki + przesunięcie w pikselach. Niepewność chwili naświetlenia (USB, MJPEG,
-    # rolling shutter) i błąd modelu trajektorii dają błąd ~ prędkość kamery × timing_sigma
-    # + motion_model_sigma. Zamiast ufać takim klatkom jak statycznym (dodatnie sprzężenie:
-    # pomiar ucieka w kierunku jazdy, reżyser dokłada ruch - oscylacja w sesji 20260926-011024)
-    # albo je wyrzucać, filtr dostaje ich prawdziwą wariancję (R zależne od ruchu).
-    timing_sigma: float = 0.02         # s - z nagrań: rozrzut pomiaru w ruchu vs prędkość kamery
-    motion_model_sigma: float = deg(0.3)  # błąd RMS modelu trajektorii (tools/measure_trajectory.py)
+    attr_alpha: float = 0.3            # smoothing of yaw and head scale (exponential average)
+    # Measurement from a frame taken while the camera moves: world angle = head angle from the model
+    # at the frame time + the pixel offset. The uncertainty of the exposure time (USB, MJPEG,
+    # rolling shutter) and the trajectory model error give an error ~ camera speed x timing_sigma
+    # + motion_model_sigma. Instead of trusting such frames as static ones (positive feedback:
+    # the measurement runs away in the direction of travel, the director adds movement -
+    # oscillation in session 20260926-011024)
+    # or discarding them, the filter gets their true variance (R dependent on motion).
+    timing_sigma: float = 0.02         # s - from recordings: scatter in motion vs camera speed
+    motion_model_sigma: float = deg(0.3)  # RMS error of the trajectory model (tools/measure_trajectory.py)
 
 
 class Kalman1D:
-    """Model stałej prędkości: stan (x, v), pomiar x."""
+    """Constant-velocity model: state (x, v), measurement x."""
 
     def __init__(self, meas_sigma: float, accel_sigma: float) -> None:
         self.r = meas_sigma ** 2
@@ -81,12 +82,12 @@ class Kalman1D:
         return self.x + self.v * dt, [[n00, n01], [n10, n11]]
 
     def innovation(self, z: float, t: float, r_extra: float = 0.0) -> tuple[float, float]:
-        """(reszta, wariancja reszty) pomiaru ``z`` w chwili ``t``."""
+        """(residual, residual variance) of the measurement ``z`` at time ``t``."""
         x, p = self._predicted(t)
         return z - x, p[0][0] + self.r + r_extra
 
     def update(self, z: float, t: float, r_extra: float = 0.0) -> None:
-        """``r_extra`` - dodatkowa wariancja tego pomiaru (np. klatka z ruchu kamery)."""
+        """``r_extra`` - extra variance of this measurement (e.g. a frame from camera motion)."""
         x, p = self._predicted(t)
         s = p[0][0] + self.r + r_extra
         k0, k1 = p[0][0] / s, p[1][0] / s
@@ -107,10 +108,10 @@ class TargetEstimate:
     tilt: float
     v_pan: float
     v_tilt: float
-    t: float            # chwila, na którą przewidziano
-    last_seen: float    # chwila ostatniego przyjętego pomiaru
-    yaw: float | None = None          # kierunek twarzy, wygładzony (framing.SideSelector)
-    head_scale: float | None = None   # odcinek oczy→barki w arcsec kąta świata, wygładzony
+    t: float            # the instant the prediction is for
+    last_seen: float    # the instant of the last accepted measurement
+    yaw: float | None = None          # face direction, smoothed (framing.SideSelector)
+    head_scale: float | None = None   # eye→shoulder segment in arcsec of world angle, smoothed
 
     @property
     def age(self) -> float:
@@ -148,7 +149,8 @@ class TargetFilter:
         self._rejects = 0
 
     def motion_variance(self, cam_speed: float) -> float:
-        """Dodatkowa wariancja pomiaru z klatki, gdy oś kamery jechała z ``cam_speed`` [arcsec/s]."""
+        """Extra measurement variance from a frame, when the camera axis moved with
+        ``cam_speed`` [arcsec/s]."""
         if cam_speed <= 0.0:
             return 0.0
         s = self.settings
@@ -157,10 +159,10 @@ class TargetFilter:
     def update(self, t: float, pan: float, tilt: float,
                yaw: float | None = None, head_scale: float | None = None,
                cam_speed: tuple[float, float] = (0.0, 0.0)) -> bool:
-        """Dodaje pomiar kąta świata głowy (i opcjonalnie yaw, skalę). Zwraca, czy został przyjęty.
+        """Add a world-angle head measurement (and optionally yaw, scale). Returns whether it was accepted.
 
-        ``cam_speed`` - prędkość osi (pan, tilt) kamery w chwili klatki; w ruchu pomiar jest
-        mniej pewny (:meth:`motion_variance`) i słabiej przesuwa estymatę.
+        ``cam_speed`` - the camera axis speed (pan, tilt) at the frame time; in motion the measurement is
+        less certain (:meth:`motion_variance`) and moves the estimate less.
         """
         r_pan, r_tilt = (self.motion_variance(abs(v)) for v in cam_speed)
         if self._last_seen is None:
@@ -187,12 +189,12 @@ class TargetFilter:
         return True
 
     def estimate(self, t: float, hold: bool = False, capped: bool = True) -> TargetEstimate | None:
-        """Estymata na chwilę ``t``.
+        """Estimate for the instant ``t``.
 
-        ``hold=True`` - pomiary są wstrzymane z powodu ruchu kamery, więc brak nowych
-        pomiarów nie oznacza utraty celu (do ``max_hold`` s).
-        ``capped=False`` - przewidywanie bez limitu ``max_extrapolation`` (idący cel:
-        podążanie i doganianie potrzebują przewidywania przez luki w detekcji).
+        ``hold=True`` - measurements are paused because of camera motion, so no new
+        measurements do not mean the target is lost (up to ``max_hold`` s).
+        ``capped=False`` - prediction without the ``max_extrapolation`` limit (a walking target:
+        following and catching up need prediction through detection gaps).
         """
         if self._last_seen is None:
             return None

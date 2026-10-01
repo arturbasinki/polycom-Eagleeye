@@ -1,11 +1,12 @@
-"""Percepcja: z klatki punkt głowy celu (Observation) i lista wykryć do podglądu.
+"""Perception: from a frame, the target head point (Observation) and the detection list for
+the preview.
 
-Źródłem jest jeden model pozy (RTMO-s): dla każdej osoby 17 punktów COCO.
-Punkt głowy to średnia widocznych punktów nosa, oczu i uszu - istnieje
-przodem, w profilu, stojąc i tyłem. Wcześniej twarz (YuNet) i sylwetka
-(YOLOX) były dwoma źródłami, a przełączanie między nimi przesuwało cel
-o 9-13° przy wstawaniu, siadaniu i odwracaniu się (spike 2026-09-23;
-RTMO-s w tych samych chwilach najwyżej 3-5°).
+The source is a single pose model (RTMO-s): 17 COCO keypoints for each person.
+The head point is the mean of the visible nose, eye and ear keypoints - it exists
+from the front, in profile, standing and from behind. Previously the face (YuNet) and the body
+(YOLOX) were two sources, and switching between them shifted the target
+by 9-13° when standing up, sitting down and turning around (spike 2026-09-23;
+RTMO-s at the same moments at most 3-5°).
 """
 
 from __future__ import annotations
@@ -15,27 +16,28 @@ from dataclasses import dataclass
 
 from .detectors import Detection, PoseDetector
 
-HEAD_KEYPOINTS = 5          # COCO: 0 nos, 1-2 oczy, 3-4 uszy
-KEYPOINT_MIN_CONF = 0.3     # reguła z pomiarów spike'u
-# Skala kary za odległość od poprzedniego celu (ułamek przekątnej klatki).
+HEAD_KEYPOINTS = 5          # COCO: 0 nose, 1-2 eyes, 3-4 ears
+KEYPOINT_MIN_CONF = 0.3     # rule from the spike measurements
+# Penalty scale for distance from the previous target (fraction of the frame diagonal).
 ASSOCIATION_SCALE = 0.15
 
 
 @dataclass(frozen=True)
 class Observation:
-    x: float                          # punkt głowy w pikselach klatki
+    x: float                          # head point in frame pixels
     y: float
-    t: float                          # czas powstania klatki (CLOCK_MONOTONIC)
+    t: float                          # frame capture time (CLOCK_MONOTONIC)
     score: float
     source: str                       # "poza"
     box: tuple[int, int, int, int]
-    yaw: float | None = None          # kierunek twarzy: + nos na prawo w obrazie (framing)
-    head_scale_px: float | None = None  # odcinek oczy→barki w pikselach klatki
+    yaw: float | None = None          # face direction: + nose to the right in the image (framing)
+    head_scale_px: float | None = None  # eye→shoulder segment in frame pixels
 
 
 def head_point(det: Detection) -> tuple[float, float]:
-    """Średnia widocznych punktów głowy; gdy żadnego nie widać - środek górnej krawędzi
-    ramki (głowa nad kadrem u stojącej osoby blisko kamery: kamera ma jechać w górę)."""
+    """Mean of the visible head keypoints; when none is visible - the center of the top edge
+    of the box (head above the frame for a person standing close to the camera: the camera
+    must move up)."""
     if det.keypoints:
         pts = [(x, y) for x, y, c in det.keypoints[:HEAD_KEYPOINTS] if c > KEYPOINT_MIN_CONF]
         if pts:
@@ -49,9 +51,10 @@ def _visible(det: Detection, indices: tuple[int, ...]) -> list[tuple[float, floa
 
 
 def face_yaw(det: Detection) -> float | None:
-    """Wskaźnik odwrócenia głowy w [-1, 1]: położenie nosa względem środka widocznych oczu
-    i uszu, w połowach ich rozpiętości. Dodatni = nos na prawo w obrazie (twarz zwrócona
-    w prawo kadru). Proporcja w obrębie twarzy - nie zależy od odległości ani zoomu."""
+    """Head-turn indicator in [-1, 1]: position of the nose relative to the center of the visible eyes
+    and ears, in halves of their spread. Positive = nose to the right in the image (face turned
+    to the right of the frame). A proportion within the face - it does not depend on distance
+    or zoom."""
     nose = _visible(det, (0,))
     sides = _visible(det, (1, 2, 3, 4))
     if not nose or len(sides) < 2:
@@ -65,10 +68,10 @@ def face_yaw(det: Detection) -> float | None:
 
 
 def head_scale_px(det: Detection) -> float | None:
-    """Skala głowy: pionowy odcinek linia oczu → linia barków (px). Bez widocznych barków
-    - None (nie szacujemy z odległości oczu: iloraz oczy→barki zależy od obrotu głowy,
-    2026-09-25, więc przełączanie źródeł pompowałoby zoom); filtr utrzymuje ostatnią
-    miarę."""
+    """Head scale: the vertical segment eye line -> shoulder line (px). Without visible shoulders
+    - None (we do not estimate from the eye distance: the eye→shoulder ratio depends on head rotation,
+    2026-09-25, so switching sources would pump the zoom); the filter holds the last
+    measure."""
     eyes = _visible(det, (1, 2))
     shoulders = _visible(det, (5, 6))
     if eyes and shoulders:
@@ -80,8 +83,8 @@ def head_scale_px(det: Detection) -> float | None:
 
 def pick(cands: list[Detection], previous: tuple[float, float] | None,
          frame_w: int, frame_h: int) -> Detection | None:
-    """Bez poprzedniego celu: największa osoba (najbliższa). Z nim: rozmiar
-    z wykładniczą karą za odległość - cel nie przeskakuje na innego człowieka."""
+    """Without a previous target: the largest person (closest). With one: size
+    with an exponential penalty for distance - the target does not jump to another person."""
     if not cands:
         return None
     if previous is None:
@@ -111,8 +114,8 @@ class Perception:
 
     @staticmethod
     def observation(det: Detection, t: float) -> Observation:
-        """Obserwacja z wybranego wykrycia (głowa, skręt twarzy, skala) - wspólna dla ``pick``
-        i dla osoby wskazanej kliknięciem (eagleeye.identity)."""
+        """Observation from the chosen detection (head, face turn, scale) - shared by ``pick``
+        and by the person selected by a click (eagleeye.identity)."""
         x, y = head_point(det)
         return Observation(x, y, t, det.score, det.label, det.as_box(),
                            yaw=face_yaw(det), head_scale_px=head_scale_px(det))

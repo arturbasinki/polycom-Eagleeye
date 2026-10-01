@@ -1,19 +1,19 @@
-"""Reżyser: kiedy i jak ruszyć kamerą - jak spokojny operator.
+"""Director: when and how to move the camera - like a calm operator.
 
-Wejście: estymata celu w kątach świata, model głowicy, pole widzenia.
-Wyjście: lista rozkazów (:class:`Command`) dla wykonawcy. Moduł nie dotyka
-sprzętu, więc całe zachowanie da się sprawdzić testami.
+Input: target estimate in world angles, head model, field of view.
+Output: a list of commands (:class:`Command`) for the actuator. The module does not touch
+hardware, so the whole behaviour can be checked with tests.
 
-Zasady (spec, sekcja "Reżyser"):
+Rules (spec, "Director" section):
 
-* histereza - kamera rusza, gdy głowa wyjdzie poza szeroką strefę wyzwalania,
-  i dojeżdża dokładnie do punktu kadrowania,
-* zwłoka - głowa musi być poza strefą nieprzerwanie,
-* jeden rozkaz na ruch; korekta w locie tylko przy dużym rozjeździe i po 60% ruchu
-  (restart krzywej S w połowie byłby najgorszym szarpnięciem),
-* podążanie prędkościowe tylko dla pan i tylko w profilu, który je włącza; stop
-  z wyprzedzeniem na wybieg, a po wyhamowaniu zawsze dojazd absolutny, który
-  przy okazji ponownie zakotwicza prawdziwą pozycję głowicy.
+* hysteresis - the camera moves when the head leaves the wide trigger zone,
+  and arrives exactly at the framing point,
+* dwell - the head must be outside the zone continuously,
+* one command per move; in-flight correction only on a large deviation and after 60% of the move
+  (restarting the S-curve halfway would be the worst jerk),
+* velocity following only for pan and only in a profile that enables it; stop
+  with a lead for the coast, and after braking always an absolute arrival that
+  also re-anchors the true head position.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from .target_filter import TargetEstimate
 class Command:
     kind: str       # "abs" | "vel" | "zoom"
     axis: str       # "pan" | "tilt" | "zoom"
-    value: float    # abs: kąt [arcsec]; vel: kierunek -1/0/+1; zoom: wartość kontrolki
+    value: float    # abs: angle [arcsec]; vel: direction -1/0/+1; zoom: control value
 
 
 @dataclass(frozen=True)
@@ -52,46 +52,47 @@ class Limits:
         return min(max(value, lo), hi)
 
 
-# stany osi
+# axis states
 IDLE, ALERT, MOVING, FOLLOWING, BRAKING = "idle", "alert", "moving", "following", "braking"
-# tryby reżysera
+# director modes
 TRACKING, SEARCHING, LOST, WAITING = "tracking", "searching", "lost", "waiting"
 
-FAST_FOR = 0.06             # s szybkiego ruchu celu, zanim włączymy podążanie
-RETARGET_PROGRESS = 0.6     # korekta w locie dopiero po tej części ruchu
-MIN_MOVE = deg(0.5)         # ruchy krótsze niż to pomijamy (np. cel za granicą zakresu)
-# Kompozycja (odbiór 2026-09-25): punkt głowy w spoczynku ma być w paśmie 5% wokół
-# punktu złotego podziału (kryterium odbioru), a strefa wyzwalania (do 15-26%) jest
-# za szeroka, by to gwarantować: po przemieszczeniu osoba potrafi "osiąść" 10% od
-# punktu i strefa nigdy by nie skorygowała. Pasmo wewnętrzne + cichy re-fit.
-COMPOSITION_BAND = 0.05     # ułamek szerokości (pan) / wysokości (tilt) kadru
-REFIT_DWELL = 3.0           # s w strefie środkowej (pasmo..strefa), zanim re-fit
-FOLLOW_MARGIN_S = 0.1       # zapas przy granicy: droga ~1 taktu pętli (15 Hz) przy pełnej prędkości
-SEARCH_DWELL = 0.6          # s postoju w punkcie skanu (detekcja tylko w bezruchu)
-RESCAN_AFTER = 60.0         # s do ponownego skanu, gdy nikogo nie znaleziono
-WORK_TILT_DEFAULT = -deg(5) # wysokość robocza skanu bez presetu "dom"
-CATCHUP_HORIZON = 1.0       # s - na ile w przód przewidujemy uciekający cel
-CATCHUP_MAX = 0.75          # doganianie najdalej o tyle pól widzenia
-CATCHUP_MIN_SPEED = deg(2)  # wolniejszy cel nie "uciekł" - nie doganiamy
-EDGE_MARGIN = 0.12          # cel "przy krawędzi": bliżej niż 12% szerokości od brzegu
-# Ruch dopiero na osiadły cel (przegląd 2026-09-26): ruch absolutny trafia jednym rozkazem
-# tylko w cel, który stoi. Rozkaz wydany w trakcie wstawania/kroku celuje w pozycję
-# chwilową, osoba idzie dalej i trzeba dojeżdżać drugi, trzeci raz (schody). Czekamy, aż
-# prędkość celu spadnie, chyba że przewidywana pozycja w chwili dojazdu opuszcza kadr.
-SETTLE_SPEED = deg(2.0)     # cel wolniejszy niż to "stoi" (szum prędkości filtra w spoczynku < 1,5°/s)
-SETTLE_MAX_WAIT = 2.0       # s - najdłuższe czekanie na osiadnięcie
-# Wyprzedzenie (prezentacja) jest dla idącej osoby: chód to ~20°/s. Z bliska (podjazd
-# fotelem) prędkość kątowa z filtra sięgała 60°/s i wyprzedzenie v × ~0,5 s dawało rozkazy
-# pan +110° / -110° (sesja 20260926-150210). Ograniczamy prędkość i samo przesunięcie.
+FAST_FOR = 0.06             # s of fast target motion before we enable following
+RETARGET_PROGRESS = 0.6     # in-flight correction only after this part of the move
+MIN_MOVE = deg(0.5)         # moves shorter than this we skip (e.g. target beyond the range)
+# Composition (acceptance 2026-09-25): a head point at rest must be within the 5% band around
+# the golden-ratio point (the acceptance criterion), while the trigger zone (up to 15-26%) is
+# too wide to guarantee it: after a displacement a person can "settle" 10% from the
+# point and the zone would never correct it. An inner band + a quiet re-fit.
+COMPOSITION_BAND = 0.05     # fraction of frame width (pan) / height (tilt)
+REFIT_DWELL = 3.0           # s in the middle zone (band..zone) before the re-fit
+FOLLOW_MARGIN_S = 0.1       # margin at the limit: distance ~1 loop tick (15 Hz) at full speed
+SEARCH_DWELL = 0.6          # s of rest at a scan point (detection only while still)
+RESCAN_AFTER = 60.0         # s until a full rescan when nobody was found
+WORK_TILT_DEFAULT = -deg(5) # working height for the scan without a "home" preset
+CATCHUP_HORIZON = 1.0       # s - how far ahead we predict a fleeing target
+CATCHUP_MAX = 0.75          # catch-up at most this many fields of view
+CATCHUP_MIN_SPEED = deg(2)  # a slower target did not "escape" - we do not catch up
+EDGE_MARGIN = 0.12          # target "at the edge": less than 12% of the width from the border
+# Move only onto a settled target (review 2026-09-26): an absolute move hits with a single
+# command only a target that is standing still. A command issued while a person is standing up
+# or taking a step aims at an instantaneous position, the person walks on and the camera has to
+# arrive a second, third time (in steps). We wait until the target speed drops, unless the
+# predicted position at arrival time leaves the frame.
+SETTLE_SPEED = deg(2.0)     # a target slower than this "stands still" (filter speed noise at rest < 1.5°/s)
+SETTLE_MAX_WAIT = 2.0       # s - the longest wait for settling
+# Lead (presentation) is for a walking person: walking is ~20°/s. From close up (rolling the
+# chair) the angular speed from the filter reached 60°/s and the lead v x ~0.5 s gave pan
+# commands of +110° / -110° (session 20260926-150210). We limit the speed and the offset itself.
 LEAD_MAX_SPEED = deg(25.0)
-LEAD_MAX_FOV = 0.25         # wyprzedzenie najwyżej o 1/4 szerokości kadru
-ESCAPE_HORIZON = 0.3        # s - na tyle naprzód sprawdzamy, czy cel wyjdzie z kadru
+LEAD_MAX_FOV = 0.25         # lead at most 1/4 of the frame width
+ESCAPE_HORIZON = 0.3        # s - how far ahead we check whether the target will leave the frame
 GO, WAIT, ESCAPE = "go", "wait", "escape"
-ZOOM_BAND = 1.2             # zoom rusza, gdy potrzebna krotność różni się o ponad 20% (w logarytmie)
-ZOOM_BAND_RESET = 1.15      # zwłoka resetuje się dopiero poniżej tego stosunku (histereza)
-ZOOM_DWELL = 2.0            # s poza pasmem - dłużej niż pan/tilt: pochylenie się do ekranu nie przybliża
-ZOOM_TARGET_STABILITY = 1.12  # cel może się zmieniać o ≤12% w oknie zwłoki, inaczej nie startuje ruch
-# Wynik tools/measure_zoom.py (plan etapu C, Task 2): czy zoom może jechać razem z pan/tilt.
+ZOOM_BAND = 1.2             # zoom moves when the required factor differs by more than 20% (in logarithm)
+ZOOM_BAND_RESET = 1.15      # the dwell resets only below this ratio (hysteresis)
+ZOOM_DWELL = 2.0            # s outside the band - longer than pan/tilt: leaning in does not zoom
+ZOOM_TARGET_STABILITY = 1.12  # the target may change by ≤12% in the dwell window, or no move
+# Result of tools/measure_zoom.py (stage C plan, Task 2): whether zoom may travel together with pan/tilt.
 ZOOM_WITH_PAN_TILT = True
 
 
@@ -131,19 +132,19 @@ class Director:
         self._plan: list[tuple[float, float]] = []
         self._plan_kind = ""                 # "start" | "local"
         self._arrived_at: float | None = None
-        self._await_motion = False           # rozkaz punktu wysłany, głowica jeszcze nie ruszyła
+        self._await_motion = False           # point command sent, the head has not moved yet
         self._step_deadline: float | None = None
         self._rescan_at: float | None = None
         self._zoom_before: float | None = None
         self._return_point: tuple[float, float] | None = None
         self._cam_at_last_seen: float = 0.0
         self.side = SideSelector()
-        self._pan_side = CENTER             # strona, dla której wysłano ostatni ruch pan
+        self._pan_side = CENTER             # the side for which the last pan move was sent
         self.auto_zoom = False
-        self.last_zoom_goal: float | None = None  # ostatni wyliczony zoom docelowy (podgląd, "stan")
+        self.last_zoom_goal: float | None = None  # last computed target zoom (preview, "state")
         self._zoom_axis = _Axis()
         self._zoom_moving = False
-        self._lead_hfov = 0.0               # pole widzenia z ostatniego taktu (limit wyprzedzenia)
+        self._lead_hfov = 0.0               # field of view from the last tick (lead limit)
 
     def set_profile(self, profile: Profile) -> None:
         self.profile = profile
@@ -166,7 +167,7 @@ class Director:
             self.side.update(t, est.yaw, p.side_enter, p.side_exit, p.side_dwell)
         return cmds + self._tick_mode(t, est, head, view)
 
-    # --- tryby -----------------------------------------------------------
+    # --- modes -----------------------------------------------------------
 
     def _tick_mode(self, t: float, est: TargetEstimate | None, head: HeadModel, view: View) -> list[Command]:
         if self._mode == SEARCHING:
@@ -183,9 +184,9 @@ class Director:
                 return cmds
             return []
         if est is None:
-            # Własny dojazd absolutny może chwilowo zgubić detekcję (kamera się rusza).
-            # Dokańczamy zaplanowany ruch, zanim ogłosimy utratę celu - inaczej reżyser
-            # przerywałby własny przejazd i wpadał w drabinę utraty bez powodu.
+            # Our own absolute arrival can briefly lose the detection (the camera is moving).
+            # We finish the planned move before announcing the target loss - otherwise the director
+            # would interrupt its own travel and fall into the loss ladder for no reason.
             if any(ax.state == MOVING and head.moving(axis, t) for axis, ax in self._axes.items()):
                 return []
             return self._begin_lost(t, view)
@@ -194,10 +195,10 @@ class Director:
             return zoom
         return self._track_axis("pan", t, est, head, view) + self._track_axis("tilt", t, est, head, view)
 
-    # --- szukanie ----------------------------------------------------------
+    # --- searching ----------------------------------------------------------
 
     def start_search(self, t: float, zoom_value: float = 0.0) -> None:
-        """Kalibracja startowa / przycisk "szukaj osoby". Rozkazy wyjdą w najbliższym tick()."""
+        """Startup calibration / "search for a person" button. Commands will go out in the next tick()."""
         cmds = self._stop_following()
         work_tilt = self.home[1] if self.home else WORK_TILT_DEFAULT
         if self.last_azimuth:
@@ -210,7 +211,7 @@ class Director:
         self._pending += self._enter_search(zoom_value, cmds)
 
     def reset(self) -> None:
-        """Śledzenie wyłączone: zapomnij plany i czekaj."""
+        """Tracking disabled: forget the plans and wait."""
         self._axes = {"pan": _Axis(), "tilt": _Axis()}
         self._mode, self._ladder, self._note = WAITING, 0, None
         self._plan, self._pending = [], []
@@ -238,8 +239,8 @@ class Director:
 
     def _tick_search(self, t: float, est: TargetEstimate | None, head: HeadModel) -> list[Command]:
         if self._await_motion:
-            # Rozkaz punktu wychodzi w tym samym takcie co ta decyzja, a wykonawca stosuje
-            # go dopiero po tick(). Bez tej flagi postój liczyłby się od chwili przed ruszeniem.
+            # The point command goes out in the same tick as this decision, and the actuator applies
+            # it only after tick(). Without this flag the rest would count from before the movement.
             if head.moving("pan", t) or head.moving("tilt", t):
                 self._await_motion = False
             return []
@@ -258,15 +259,15 @@ class Director:
 
     def _search_exhausted(self, t: float) -> list[Command]:
         cmds: list[Command] = []
-        # Bez presetu "dom" po szukaniu lokalnym wracamy tam, gdzie cel zniknął. Zostanie
-        # w ostatnim punkcie skanu (-1 pole widzenia) odwracało kamerę od pokoju na stałe
-        # (sesja 20260923-004030).
+        # Without a "home" preset, after a local search we return to where the target vanished. Staying
+        # at the last scan point (-1 field of view) turned the camera away from the room permanently
+        # (session 20260923-004030).
         back = self.home or (self._return_point if self._plan_kind == "local" else None)
         if back:
             cmds += [Command("abs", "pan", back[0]), Command("abs", "tilt", back[1])]
         cmds += self._restore_zoom()
-        # Czekanie zawsze kończy się ponownym pełnym skanem - inaczej kamera odwrócona
-        # od osoby nie miałaby jak jej znowu zobaczyć.
+        # Waiting always ends with another full scan - otherwise a camera turned away
+        # from the person would have no way to see them again.
         self._rescan_at = t + RESCAN_AFTER
         if self._plan_kind == "local":
             self._ladder = 4
@@ -289,11 +290,11 @@ class Director:
         self._zoom_axis = _Axis()
         self._note = msg("director.note.found")
         if self.auto_zoom:
-            self._zoom_before = None        # zoom wyliczy kompozycja z planu
+            self._zoom_before = None        # zoom will be computed by the composition from the shot
             return []
         return self._restore_zoom()
 
-    # --- drabina utraty celu ------------------------------------------------
+    # --- target loss ladder ------------------------------------------------
 
     def _begin_lost(self, t: float, view: View) -> list[Command]:
         cmds = self._stop_following()
@@ -331,8 +332,8 @@ class Director:
         if self._ladder == 1:
             return self._ladder_last_azimuth(view)
         if self._ladder == 2 and view.zoom_value > 0 and self._zoom_before is None:
-            # Oddalamy dopiero po czasie kroku bez celu: krótka utrata (mrugnięcie detekcji,
-            # odwrócenie się) nie może skakać obrazem 2400 -> 0 -> 2400.
+            # We zoom out only after a step time without a target: a short loss (detection blink,
+            # a turn away) must not jump the image 2400 -> 0 -> 2400.
             self._zoom_before = view.zoom_value
             self._step_deadline = None
             self._note = msg("director.note.zooming_out")
@@ -342,10 +343,10 @@ class Director:
             self._ladder = 3
             tilt = self.limits.clamp("tilt", self._aim("tilt", last, view))
             self._plan = local_plan(last.pan, tilt, view.hfov, self.limits.bounds("pan"))
-            self._return_point = self._plan[0]      # miejsce utraty celu - tam wracamy bez "domu"
+            self._return_point = self._plan[0]      # the loss place - we return there without a "home"
             self._plan_kind = "local"
             return self._enter_search(view.zoom_value, [])
-        self._step_deadline = math.inf      # rozmowa: zostajemy na kroku 2
+        self._step_deadline = math.inf      # talk: we stay at step 2
         return []
 
     def _stop_following(self) -> list[Command]:
@@ -356,16 +357,16 @@ class Director:
             self._axes[axis] = _Axis()
         return cmds
 
-    # --- śledzenie jednej osi ---------------------------------------------
+    # --- tracking a single axis ---------------------------------------------
 
     def _aim(self, axis: str, est: TargetEstimate, view: View) -> float:
-        """Gdzie ma patrzeć kamera: głowa w punkcie złotego podziału po bieżącej stronie."""
+        """Where the camera should look: head at the golden-ratio point on the current side."""
         pan, tilt = aim(est, self.side.side, self._aim_view(view))
         return pan if axis == "pan" else tilt
 
     def _aim_view(self, view: View) -> View:
-        """W trakcie jazdy zoomu celujemy już przy docelowym polu widzenia - po dojeździe
-        obu osi twarz jest dokładnie w punkcie."""
+        """While the zoom is moving we already aim with the target field of view - on arrival of
+        both axes the face is exactly at the point."""
         z = self._zoom_axis
         if z.state == MOVING and z.move_target is not None:
             return replace(view, zoom_value=z.move_target)
@@ -377,7 +378,7 @@ class Director:
         return self.profile.trigger_tilt * view.vfov
 
     def _band(self, axis: str, view: View) -> float:
-        """Pasmo kompozycji: spoczynek głowy w paśmie wokół punktu - bez ruchu."""
+        """Composition band: the head at rest within the band around the point - no movement."""
         if axis == "pan":
             return COMPOSITION_BAND * view.hfov
         return COMPOSITION_BAND * view.vfov
@@ -396,9 +397,9 @@ class Director:
             elif (ax.move_target is not None and abs(aim - ax.move_target) > thr
                   and head.progress(axis, t) >= RETARGET_PROGRESS
                   and (axis == "pan" or abs(v) < SETTLE_SPEED)):
-                # Tilt koryguje w locie tylko osiadły cel: w pionie nikt nie "idzie", a w jeździe
-                # kamery estymata jedzie na przewidywaniu (pomiary z ruchu mało ważą) i
-                # przestrzeliwała zatrzymane wstawanie - korekta, a po niej jeszcze powrót.
+                # Tilt corrects in flight only a settled target: vertically nobody "walks", and while the camera
+                # moves the estimate runs on prediction (measurements in motion weigh little) and
+                # overshot a stationary standing-up - a correction, and after it yet another return.
                 return self._move(axis, aim, v, current)
             return []
         if ax.state == FOLLOWING:
@@ -409,26 +410,26 @@ class Director:
             return self._move(axis, aim, 0.0, current, force=True)
 
         if axis == "pan" and self.side.side != self._pan_side:
-            # Zmiana strony przesuwa cel o ~12% szerokości - mniej niż strefa rozmowy (15%),
-            # więc bez tego kamera by nie ruszyła. Strona ma już własną zwłokę (side_dwell).
+            # A side change shifts the target by ~12% of the width - less than the talk zone (15%),
+            # so without this the camera would not move. The side already has its own dwell (side_dwell).
             return self._move(axis, aim, v, current)
         if abs(error) <= self._band(axis, view):
             ax.state, ax.fast_since = IDLE, None
             return []
         if (axis == "pan" and self.side.pending is not None
                 and abs(error) <= (0.5 - EDGE_MARGIN) * view.hfov):
-            # Strona kadru właśnie się rozstrzyga (twarz odwrócona, trwa side_dwell). Ruch
-            # teraz celowałby w punkt, który za chwilę się zmieni - a zmiana strony wymusi
-            # drugi ruch. Czekamy (najdłużej side_dwell) i jedziemy raz, do właściwego punktu.
-            # Cel przy krawędzi kadru (idzie) nie czeka - utrata byłaby gorsza niż dwa ruchy.
+            # The frame side is just being decided (face turned away, side_dwell running). A move
+            # now would aim at a point that will change shortly - and the side change would force
+            # a second move. We wait (at most side_dwell) and go once, to the right point.
+            # A target at the frame edge (walking) does not wait - a loss would be worse than two moves.
             if ax.state == IDLE:
                 ax.state, ax.since = ALERT, t
             return []
         if abs(error) <= thr:
-            # Strefa środkowa: głowa osiadła poza pasmem kompozycji, ale w strefie
-            # wyzwalania (np. po przemieszczeniu fotela) - strefa sama tego nie
-            # skorygowałaby; cichy re-fit po REFIT_DWELL (krótsze wycieczki - gesty -
-            # nie startują).
+            # Middle zone: the head settled outside the composition band but inside the trigger
+            # zone (e.g. after moving the chair) - the zone alone would not
+            # correct it; a quiet re-fit after REFIT_DWELL (shorter excursions - gestures -
+            # do not start).
             if ax.state == IDLE:
                 ax.state, ax.since = ALERT, t
             if t - ax.since >= REFIT_DWELL:
@@ -447,8 +448,8 @@ class Director:
             if fast:
                 ax.fast_since = t if ax.fast_since is None else ax.fast_since
                 if t - ax.fast_since < FAST_FOR:
-                    # Decyzja o podążaniu jeszcze zapada. Bez tego krótsza zwłoka
-                    # (0,2 s w prezentacji) zawsze wygrywałaby ruchem absolutnym.
+                    # The decision to follow is still pending. Without this the shorter dwell
+                    # (0.2 s in presentation) would always win with an absolute move.
                     return []
                 ax.state, ax.direction = FOLLOWING, direction
                 self._note = msg("director.note.following")
@@ -461,13 +462,13 @@ class Director:
         return []
 
     def _settling(self, axis: str, t: float, error: float, v: float, view: View) -> str:
-        """GO - ruch teraz; WAIT - cel jeszcze jedzie, czekamy, aż stanie; ESCAPE - cel jedzie
-        i w chwili dojazdu byłby już przy krawędzi: ruch teraz. (Celowanie w punkt przechwycenia
-        v × czas dojazdu sprawdzone w symulacji i odrzucone: osoba, która wstaje albo robi
-        krok, zwalnia pod koniec, a v w chwili decyzji jest największa - przestrzelenie i powrót.)"""
+        """GO - move now; WAIT - the target is still moving, we wait for it to stop; ESCAPE - the target moves
+        and at arrival time would already be at the edge: move now. (Aiming at the intercept point
+        v x time-to-arrival was checked in simulation and rejected: a person who stands up or takes
+        a step slows down at the end, while v at decision time is the largest - overshoot and return.)"""
         ax = self._axes[axis]
         if abs(v) < SETTLE_SPEED or (self.profile.lead and axis == "pan"):
-            # Idący cel w prezentacji: wyprzedzenie i podążanie liczą się z jego prędkością.
+            # A walking target in presentation: lead and following count on its speed.
             ax.settle_since = None
             return GO
         if axis == "pan":
@@ -475,10 +476,10 @@ class Director:
         else:
             fov, edge = view.vfov, GOLDEN
         if axis == "tilt" and error * (-1.0 if view.invert_tilt else 1.0) < 0:
-            edge = 1.0 - GOLDEN            # w dół do dolnej krawędzi jest dalej
-        # Horyzont krótki: ruchy człowieka (wstawanie, krok) trwają ułamki sekundy, więc
-        # prędkość chwilowa przedłużona na cały czas dojazdu (~1 s) przepowiadała ucieczkę,
-        # której nie było, i kamera ruszała w połowie ruchu - drugi ruch domykał (schody).
+            edge = 1.0 - GOLDEN            # downwards to the bottom edge is farther
+        # A short horizon: human movements (standing up, a step) last fractions of a second, so
+        # the instantaneous speed extended over the whole arrival time (~1 s) predicted an escape
+        # that did not happen, and the camera moved halfway through the move - a second move closed it (in steps).
         if abs(error + v * ESCAPE_HORIZON) > (edge - EDGE_MARGIN) * fov:
             ax.settle_since = None
             return ESCAPE
@@ -493,9 +494,9 @@ class Director:
     def _move(self, axis: str, aim: float, v: float, current: float, force: bool = False) -> list[Command]:
         ax = self._axes[axis]
         lead = 0.0
-        # Wyprzedzenie tylko w poziomie: idąca osoba przesuwa się w pan. Pionowa "prędkość"
-        # to kiwanie i pochylenia - wyprzedzenie jej wystrzeliwało tilt ponad cel i drugi
-        # ruch wracał (sesja 20260926-011024, t=191,9 s i 239,5 s).
+        # Lead only horizontally: a walking person moves in pan. Vertical "velocity"
+        # is nodding and leaning - leading it fired the tilt past the target and a second
+        # move brought it back (session 20260926-011024, t=191.9 s and 239.5 s).
         if self.profile.lead and axis == "pan":
             speed = max(-LEAD_MAX_SPEED, min(LEAD_MAX_SPEED, v))
             lead = speed * (self.dyn.abs_latency + self.dyn.abs_duration(aim - current) / 2.0)
@@ -514,17 +515,17 @@ class Director:
         return [Command("abs", axis, target)]
 
     def _track_zoom(self, t: float, est: TargetEstimate, head: HeadModel, view: View) -> list[Command]:
-        """Trzecia oś: zoom do planu. Pasmo w logarytmie krotności (jednakowo czułe przy 1x
-        i 5x), zwłoka dłuższa niż pan/tilt, dojazd dokładnie do celu.
+        """Third axis: zoom to the shot. Band in the logarithm of the factor (equally sensitive at 1x
+        and 5x), a dwell longer than pan/tilt, arrival exactly at the target.
 
-        Histereza (kalibracja 2026-09-25): ruch startuje, gdy stosunek cel/bieżący przekroczy
-        ZOOM_BAND, ale licznik zwłoki resetuje się dopiero, gdy spadnie pod ZOOM_BAND_RESET -
-        wariacje celu w szczelinie 1,15-1,2 nie zatrzymywałyby przygotowanego ruchu.
+        Hysteresis (calibration 2026-09-25): the move starts when the target/current ratio crosses
+        ZOOM_BAND, but the dwell counter resets only when it drops below ZOOM_BAND_RESET -
+        target variations in the 1.15-1.2 gap would otherwise stop a prepared move.
 
-        Bramka stabilności celu (odstępstwo 5, odbiór 2026-09-25): ruch startuje tylko, gdy
-        cel nie "pila" w oknie zwłoki (max/min krotności <= ZOOM_TARGET_STABILITY) - przy
-        stałej odległości rozmowy wahania skali (gesty, obrót głowy) niosły stosunek przez
-        próg 1,2 i bez bramki zoom pompował (13 ruchów w 2 min)."""
+        Target stability gate (deviation 5, acceptance 2026-09-25): the move starts only when the
+        target does not "saw" within the dwell window (max/min factor <= ZOOM_TARGET_STABILITY) - at a
+        constant talk distance, scale fluctuations (gestures, head turn) carried the ratio across
+        the 1.2 threshold and without the gate the zoom pumped (13 moves in 2 min)."""
         ax = self._zoom_axis
         if ax.state == MOVING:
             if self._zoom_moving:
@@ -542,7 +543,7 @@ class Director:
             return []
         if r > math.log(ZOOM_BAND) and ax.state == IDLE:
             ax.state, ax.since, ax.fwin = ALERT, t, None
-        # Stosunek w szczelinie (ZOOM_BAND_RESET, ZOOM_BAND]: ani resetu, ani startu licznika.
+        # The ratio in the gap (ZOOM_BAND_RESET, ZOOM_BAND]: neither a reset nor a start of the counter.
         if ax.state == ALERT:
             win = ax.fwin if ax.fwin is not None else []
             while win and t - win[0][0] > ZOOM_DWELL:
@@ -563,13 +564,14 @@ class Director:
 
     def _follow(self, axis: str, t: float, est: TargetEstimate, head: HeadModel,
                 aim: float, v: float) -> list[Command]:
-        """Jazda ze stałą prędkością; stop, gdy głowica po wybiegu dogoni przyszłą pozycję celu."""
+        """Travel at constant speed; stop when the head, after coasting, catches up with the
+        target's future position."""
         ax = self._axes[axis]
         d = ax.direction
         rest = head.rest_angle(axis, t)
         target_future = aim + v * self.dyn.coast_time()
         lo, hi = self.limits.bounds(axis)
-        margin = self._follow_margin()      # decyzja zapada raz na takt - zapas na jeden takt jazdy
+        margin = self._follow_margin()      # the decision is made once per tick - margin for one driving tick
         at_limit = (d > 0 and rest + margin >= hi) or (d < 0 and rest - margin <= lo)
         if d * (rest - target_future) >= 0 or at_limit or v * d <= 0:
             ax.state = BRAKING
