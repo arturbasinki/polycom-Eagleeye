@@ -5,7 +5,7 @@ Sesja (captures/sessions/*.jsonl) zawiera pozycje głowy w kątach świata,
 niezależne od tego, jak jechała kamera. Symulator odtwarza tę samą osobę
 i liczy miary płynności dla wybranego profilu i nadpisań.
 
-    .venv/bin/python tools/replay_session.py captures/sessions/X.jsonl --profile rozmowa --set dwell=1.2
+    .venv/bin/python tools/replay_session.py captures/sessions/X.jsonl --profile talk --set dwell=1.2
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from eagleeye.tracker import load_session  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("session", type=Path)
-    parser.add_argument("--profile", default="rozmowa")
+    parser.add_argument("--profile", default="talk")
     parser.add_argument("--set", action="append", default=[], metavar="KLUCZ=WARTOŚĆ")
     parser.add_argument("--lag", type=float, default=0.0,
                         help="zwłoka naświetlenia klatki [s] (kamera: ~0,05)")

@@ -147,7 +147,7 @@ def test_lost_at_edge_while_walking_catches_up() -> None:
     assert pan and abs(pan[0] - (last_pan + deg(15))) < deg(1)
 
 
-def test_rozmowa_does_not_catch_up_but_waits_at_last_azimuth() -> None:
+def test_talk_does_not_catch_up_but_waits_at_last_azimuth() -> None:
     """Sesja 20260923-020939: w chwili utraty prędkość filtra była bezwartościowa (luki
     w detekcji), więc doganianie strzelało 54-61° za daleko, powtarzało się, a dopiero
     powrót na ostatni azymut trafiał w osobę. W rozmowie od razu ostatni azymut."""
@@ -182,7 +182,7 @@ def test_reacquire_with_auto_zoom_does_not_restore_old_zoom() -> None:
     assert [c.value for _, c in r.log if c.kind == "zoom"] == []
 
 
-def test_rozmowa_stops_at_step_two() -> None:
+def test_talk_stops_at_step_two() -> None:
     r = Rig(TALK)
     t = tracked(r, 0.0, 0.0, 1.0)
     r.log.clear()
@@ -191,7 +191,7 @@ def test_rozmowa_stops_at_step_two() -> None:
     assert r.d.status.ladder == 2
 
 
-def test_prezentacja_runs_local_search_then_goes_home() -> None:
+def test_presentation_runs_local_search_then_goes_home() -> None:
     r = Rig(PRESENTATION)
     r.d.home = (deg(5), 0.0)
     t = tracked(r, 0.0, 0.0, 1.0)

@@ -38,7 +38,7 @@ def report(name: str, r, profile) -> None:
           f"  ruszenia/min={r.motion_starts_per_min():.1f}")
 
 
-def test_rozmowa_sitting_with_small_moves() -> None:
+def test_talk_sitting_with_small_moves() -> None:
     scene = SimScene(lambda t: (deg(2) * math.sin(2 * math.pi * t / 7),
                                 framed(TALK) + deg(1) * math.sin(2 * math.pi * t / 5)), frame=FRAME)
     r = simulate(TALK, scene, 120.0)
@@ -48,14 +48,14 @@ def test_rozmowa_sitting_with_small_moves() -> None:
     assert r.interrupted == 0
 
 
-def test_rozmowa_detector_flicker_does_not_move_camera() -> None:
+def test_talk_detector_flicker_does_not_move_camera() -> None:
     scene = SimScene(lambda t: (0.0, framed(TALK)), jump_every=10, jump_px=24.0, frame=FRAME)
     r = simulate(TALK, scene, 60.0)
     report("migotanie detektora", r, TALK)
     assert r.moves_per_min() <= 1.0
 
 
-def test_rozmowa_lean_and_return() -> None:
+def test_talk_lean_and_return() -> None:
     scene = SimScene(lambda t: (deg(15) if 10.0 <= t < 40.0 else 0.0, framed(TALK)), frame=FRAME)
     r = simulate(TALK, scene, 60.0)
     report("odchylenie", r, TALK)
@@ -63,7 +63,7 @@ def test_rozmowa_lean_and_return() -> None:
     assert r.inside_at(TALK, 20.0) and r.inside_at(TALK, 55.0)
 
 
-def test_rozmowa_standing_up_is_followed_in_tilt() -> None:
+def test_talk_standing_up_is_followed_in_tilt() -> None:
     scene = SimScene(lambda t: (0.0, framed(TALK) + (deg(15) if t >= 5.0 else 0.0)), frame=FRAME)
     r = simulate(TALK, scene, 20.0)
     report("wstawanie", r, TALK)
@@ -83,7 +83,7 @@ def walking(t: float) -> float:
     return -deg(40)
 
 
-def test_prezentacja_walking() -> None:
+def test_presentation_walking() -> None:
     scene = SimScene(lambda t: (walking(t), framed(PRESENTATION)), frame=FRAME)
     r = simulate(PRESENTATION, scene, 96.0, start_pan=-deg(40))
     report("chodzenie", r, PRESENTATION)
@@ -111,7 +111,7 @@ def test_fast_runner_is_caught_up() -> None:
     assert r.inside_at(PRESENTATION, 9.0)
 
 
-def test_rozmowa_person_leaves_frame() -> None:
+def test_talk_person_leaves_frame() -> None:
     scene = SimScene(lambda t: (0.0, framed(TALK)), present=lambda t: t < 10.0, frame=FRAME)
     r = simulate(TALK, scene, 60.0)
     assert r.real_moves <= 2, "w rozmowie tylko krok 2 drabiny, bez skanowania"
@@ -128,7 +128,7 @@ def test_model_mismatch_still_converges_and_reanchors() -> None:
         assert abs(r.core.head.angle("pan", t_end) - r.camera.truth.angle("pan", t_end)) < deg(1)
 
 
-def test_rozmowa_head_turn_and_freeze_settles_in_band() -> None:
+def test_talk_head_turn_and_freeze_settles_in_band() -> None:
     """Zgłoszone z aplikacji: po przesunięciu głowy i zastygnięciu kamera dojeżdżała
     dwoma ruchami (sesja 20260923-003153): pomiary z czasu jazdy kamery są przesunięte,
     a filtr ekstrapolował starą prędkość przez luki w detekcji.

@@ -8,7 +8,7 @@ miary liczy tools/replay_session.py.
 Przerwanie (Ctrl+C, SIGTERM) zawsze kończy się zatrzymaniem ruchu i powrotem
 kamery na pozycję startową.
 
-    .venv/bin/python tools/live_session.py --profile prezentacja --script prezentacja
+    .venv/bin/python tools/live_session.py --profile presentation --script presentation
 """
 
 from __future__ import annotations
@@ -32,11 +32,11 @@ from eagleeye.v4l2 import (CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_TILT_ABSOLUTE,  
 
 START_DELAY = 5.0
 SCRIPTS = {
-    "prezentacja": [(0, "start za pięć sekund"), (5, "stój"), (20, "idź w lewo"), (27, "stój"),
+    "presentation": [(0, "start za pięć sekund"), (5, "stój"), (20, "idź w lewo"), (27, "stój"),
                     (35, "idź w prawo"), (45, "stój"), (53, "idź w lewo szybko"), (59, "stój"),
                     (67, "wróć na środek"), (74, "stój"), (82, "wyjdź z kadru"), (115, "wróć"),
                     (140, "koniec")],
-    "rozmowa": [(0, "start za pięć sekund"), (5, "siedź normalnie"), (65, "odchyl się w bok"),
+    "talk": [(0, "start za pięć sekund"), (5, "siedź normalnie"), (65, "odchyl się w bok"),
                 (75, "wróć"), (95, "wstań"), (105, "usiądź"), (125, "koniec")],
 }
 
@@ -59,8 +59,8 @@ def say(text: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--profile", default="rozmowa")
-    parser.add_argument("--script", default="rozmowa", choices=sorted(SCRIPTS))
+    parser.add_argument("--profile", default="talk")
+    parser.add_argument("--script", default="talk", choices=sorted(SCRIPTS))
     parser.add_argument("--start-pan", type=float, default=35.0, help="stopnie; od tego miejsca startuje skan")
     parser.add_argument("--device", default="/dev/video0")
     args = parser.parse_args()

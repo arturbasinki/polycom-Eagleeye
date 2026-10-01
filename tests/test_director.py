@@ -262,7 +262,7 @@ def test_fast_walker_triggers_follow_then_brake_then_absolute() -> None:
     assert any(k == "abs" for k, _ in pan[stop:]), "po hamowaniu dojazd absolutny"
 
 
-def test_rozmowa_never_uses_velocity() -> None:
+def test_talk_never_uses_velocity() -> None:
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 4.0, lambda t, _: est(0.2 * VIEW.hfov + deg(20) * t, framed_tilt(TALK), t,
                                                v_pan=deg(20)))
