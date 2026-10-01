@@ -19,6 +19,7 @@ DEFAULTS: dict = {
     "preview_height": 720,
     "preview_fps": 15,
     "overlay": True,
+    "language": "auto",            # "auto" (from $LANG), or a catalog code: "en", "pl"
     # Zmierzona dynamika głowicy (pola eagleeye.head_model.Dynamics).
     # Pusty słownik = wartości ze spike'u; wypełnia tools/measure_dynamics.py --save.
     "dynamics": {},

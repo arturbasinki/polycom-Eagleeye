@@ -65,5 +65,10 @@ def test_select_hold_defaults_to_six_seconds_and_survives_reload() -> None:
     s.save()
     assert Store(path).settings["tracking"]["select_hold_s"] == 10.0
 
+
+def test_language_defaults_to_auto_and_is_loaded() -> None:
+    assert store_with({}).settings["language"] == "auto"
+    assert store_with({"language": "pl"}).settings["language"] == "pl"
+
 if __name__ == "__main__":
     run(globals(), "Konfiguracja")
