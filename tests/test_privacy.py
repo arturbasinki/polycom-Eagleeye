@@ -41,12 +41,12 @@ class FakeTracker:
 
     def set_enabled(self, on: bool) -> None:
         self.enabled = on
-        self.log.append(("sledzenie", on))
+        self.log.append(("tracking", on))
 
     def move_to(self, pan=None, tilt=None) -> bool:
         if self.enabled:
             return False
-        self.log.append(("ruch", pan, tilt))
+        self.log.append(("move", pan, tilt))
         return True
 
 
@@ -55,7 +55,7 @@ def test_enable_shows_card_first_then_parks_head() -> None:
     p = Privacy(FakeVcam(log))
     p.enable(FakeTracker(log))
     assert p.active
-    assert log == [("vcam", True), ("sledzenie", False), ("ruch", None, -108000.0)]
+    assert log == [("vcam", True), ("tracking", False), ("move", None, -108000.0)]
 
 
 def test_disable_restores_pose_tracking_and_live_image() -> None:
@@ -66,7 +66,7 @@ def test_disable_restores_pose_tracking_and_live_image() -> None:
     log.clear()
     p.disable(tr)
     assert not p.active
-    assert log == [("ruch", 36000.0, 7200.0), ("sledzenie", True), ("vcam", False)]
+    assert log == [("move", 36000.0, 7200.0), ("tracking", True), ("vcam", False)]
 
 
 def test_tracking_stays_off_if_it_was_off() -> None:
@@ -75,7 +75,7 @@ def test_tracking_stays_off_if_it_was_off() -> None:
     tr = FakeTracker(log, enabled=False)
     p.enable(tr)
     p.disable(tr)
-    assert ("sledzenie", True) not in log
+    assert ("tracking", True) not in log
 
 
 def test_without_camera_only_the_card_changes() -> None:

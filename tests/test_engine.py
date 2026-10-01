@@ -28,7 +28,7 @@ from eagleeye.v4l2 import CID_TILT_ABSOLUTE  # noqa: E402
 
 class NoPerson:
     last_ms = 0.0
-    description = "atrapa"
+    description = "fake"
 
     def observe(self, frame, t, previous):
         return None, []
@@ -374,6 +374,18 @@ def test_language_command_switches_saves_and_refreshes_the_slates() -> None:
         assert engine.command("language", "auto")["language"] in ("en", "pl")
     finally:
         i18n.set_language("en")
+
+
+def test_language_command_rejects_unknown_codes() -> None:
+    engine, _ = make_engine()
+    before = engine.settings["language"]
+    try:
+        engine.command("language", "klingon")
+    except ValueError as exc:
+        assert "klingon" in str(exc) and "auto" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+    assert engine.settings["language"] == before and engine.vcam.refreshed == 0, "nothing may be saved or refreshed"
 
 
 def test_command_errors_carry_a_message() -> None:

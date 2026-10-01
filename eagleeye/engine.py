@@ -18,7 +18,7 @@ from typing import Callable
 
 from .config import Store
 from .head_model import dynamics_from_settings
-from .i18n import LocalizedError, Message, get_language, msg, set_language
+from .i18n import AUTO, LocalizedError, Message, available_languages, get_language, msg, set_language
 from .privacy import Privacy
 from .profiles import DEFAULT_PROFILE, PROFILES
 from .tracker import Tracker, TrackerSettings
@@ -267,6 +267,9 @@ class Engine:
 
     def set_language(self, code: str) -> str:
         """Apply and save the UI language; the virtual-camera slates re-render at once."""
+        languages = available_languages()
+        if code != AUTO and code not in languages:
+            raise ValueError(f"unknown language {code!r} ({', '.join([AUTO, *languages])})")
         with self._lock:
             active = set_language(code)
             self.settings["language"] = code

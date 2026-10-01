@@ -135,7 +135,7 @@ def test_calibration_is_the_default_without_config() -> None:
 
 
 def test_config_null_does_not_erase_calibration() -> None:
-    d = dynamics_from_settings({"tilt_abs_base": None, "abs_speed": "bzdura"})
+    d = dynamics_from_settings({"tilt_abs_base": None, "abs_speed": "nonsense"})
     assert d == Dynamics()
 
 

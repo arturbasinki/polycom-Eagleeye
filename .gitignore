@@ -1,32 +1,23 @@
-# Środowisko i artefakty budowania
+# Environment and build artifacts
 .venv/
 __pycache__/
 *.pyc
 
-# Modele ONNX - pobierane skryptem z README (36 MB, nie trzymamy w repo)
+# ONNX models - downloaded by install.sh (36 MB, not kept in the repo)
 models/*.onnx
 
-# Obrazy referencyjne testów - dociągane automatycznie przy pierwszym uruchomieniu
+# Test reference images - fetched automatically on first run
 models/testdata/
 
-# Artefakty narzędzi pomocniczych
-.playwright-mcp/
-
-# Zrzuty klatek robione przyciskiem w aplikacji
-captures/zrzut-*.jpg
-
-# Nagrane sesje śledzenia (tools/replay_session.py)
-captures/sessions/
-
-# Pliki i katalogi z kropką (narzędzia, agenci, edytory) - poza samym .gitignore
+# Dot files and directories (tools, agents, editors) - except .gitignore itself
 .*
 !.gitignore
 
-# Dokumentacja robocza (plany i specyfikacje) - nie jest potrzebna do uruchomienia
+# Working documentation (plans and specs) - not needed to run the app
 docs/
 
-# Zrzuty z kamery i nagrania - zawierają wizerunek i wnętrze, nie publikujemy
+# Camera captures and recorded sessions - they can show people and interiors, so they are not published
 captures/
 
-# Zdjęcia sprzętu (numer seryjny egzemplarza)
+# Photos of the hardware (serial number of the author's unit)
 resources/

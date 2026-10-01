@@ -76,7 +76,7 @@ def test_installer_keys_exist_in_the_catalog() -> None:
 
 def test_scripts_use_the_english_names() -> None:
     text = "".join(s.read_text(encoding="utf-8") for s in SCRIPTS)
-    for old in ("zaslepka", "prywatnosc", "--wszystko", "zakoncz"):
+    for old in ("zaslepka", "prywatnosc", "--wszystko", "zakoncz"):      # polish: deliberate (the old names)
         assert old not in text, old
     assert "eagleeye-placeholder.service" in text and "eagleeye-privacy" in text
 

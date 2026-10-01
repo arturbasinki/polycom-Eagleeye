@@ -91,7 +91,7 @@ class TwoPeople:
     ``observation`` as on selection."""
 
     last_ms = 0.0
-    description = "atrapa"
+    description = "fake"
 
     def __init__(self) -> None:
         self.left = Detection(40, 20, 50, 140, 0.9, "pose")        # the bigger one

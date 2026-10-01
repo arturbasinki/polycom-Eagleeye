@@ -1,11 +1,11 @@
-/* Miniaturowe narzędzie do kontroli V4L2 (zamiast v4l2-ctl z v4l-utils).
+/* Minimal V4L2 control tool (instead of v4l2-ctl from v4l-utils).
  *
- * Użycie:
- *   v4l2ctl list [urzadzenie]
- *   v4l2ctl get  <id> [urzadzenie]
- *   v4l2ctl set  <id> <wartosc> [urzadzenie]
+ * Usage:
+ *   v4l2ctl list [device]
+ *   v4l2ctl get  <id> [device]
+ *   v4l2ctl set  <id> <value> [device]
  *
- * id mozna podac dziesietnie lub szesnastkowo (0x...).
+ * The id can be given in decimal or hexadecimal (0x...).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -21,10 +21,10 @@
 static void usage(const char *p)
 {
 	fprintf(stderr,
-		"uzycie:\n"
+		"usage:\n"
 		"  %s list [dev]\n"
 		"  %s get <id> [dev]\n"
-		"  %s set <id> <wartosc> [dev]\n", p, p, p);
+		"  %s set <id> <value> [dev]\n", p, p, p);
 	exit(2);
 }
 

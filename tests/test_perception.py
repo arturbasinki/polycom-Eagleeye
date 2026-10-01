@@ -39,7 +39,7 @@ FRONTAL = person(300, 80, 200, 460, {0: (400, 150), 1: (410, 140), 2: (390, 140)
 
 class FakePose:
     name = "pose"
-    backend = "atrapa"
+    backend = "fake"
 
     def __init__(self, dets: list[Detection]) -> None:
         self.dets = dets
@@ -90,7 +90,7 @@ def test_observe_returns_head_of_target_and_all_detections() -> None:
     p = Perception(FakePose([FRONTAL]))
     obs, dets = p.observe(FRAME, t=12.5, previous=None)
     assert (obs.x, obs.y, obs.t, obs.source) == (400.0, 144.0, 12.5, "pose")
-    assert dets == [FRONTAL] and p.last_ms == 2.5 and "atrapa" in p.description
+    assert dets == [FRONTAL] and p.last_ms == 2.5 and "fake" in p.description
 
 
 def test_observe_without_detections_returns_none() -> None:

@@ -185,7 +185,7 @@ class CameraApp:
         self.overlay_canvas = cv.Canvas(left=0, top=0, right=0, bottom=0,
                                         resize_interval=100, on_resize=self._on_overlay_resize)
         self._overlay_size = (0.0, 0.0)
-        self._overlay_drawn: tuple | None = None     # (stan trackera, rozmiar) ostatnio narysowane
+        self._overlay_drawn: tuple | None = None     # (tracker state, size) drawn last
         self.preview_stack = ft.Stack(
             expand=True,
             controls=[
@@ -908,7 +908,7 @@ class CameraApp:
             return
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         try:
-            path = snapshots_dir() / f"zrzut-{stamp}.jpg"
+            path = snapshots_dir() / f"snapshot-{stamp}.jpg"
             path.write_bytes(self._last_jpg)
         except OSError as exc:
             self._notify(t("app.notice_snapshot_failed", error=exc), ERROR)

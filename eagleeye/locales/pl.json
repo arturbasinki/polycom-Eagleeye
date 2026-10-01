@@ -223,5 +223,18 @@
   "vcam.status.no_device": "brak urządzenia - uruchom install.sh",
   "vcam.status.off": "wyłączona",
   "vcam.status.running": "działa",
-  "vcam.status.write_error": "błąd zapisu: {error}"
+  "vcam.status.write_error": "błąd zapisu: {error}",
+  "live_session.cue.start": "start za pięć sekund",
+  "live_session.cue.stop": "stój",
+  "live_session.cue.left": "idź w lewo",
+  "live_session.cue.right": "idź w prawo",
+  "live_session.cue.left_fast": "idź w lewo szybko",
+  "live_session.cue.center": "wróć na środek",
+  "live_session.cue.leave_frame": "wyjdź z kadru",
+  "live_session.cue.return": "wróć",
+  "live_session.cue.sit": "siedź normalnie",
+  "live_session.cue.lean_aside": "odchyl się w bok",
+  "live_session.cue.stand": "wstań",
+  "live_session.cue.sit_down": "usiądź",
+  "live_session.cue.end": "koniec"
 }

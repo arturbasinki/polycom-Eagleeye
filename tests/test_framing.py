@@ -171,7 +171,7 @@ def test_reset_returns_to_center() -> None:
 def test_profiles_have_shots_and_overrides_are_validated() -> None:
     assert TALK.shot == "MCU" and PRESENTATION.shot == "MS"
     assert resolve("talk", {"shot": "CU"}).shot == "CU"
-    assert resolve("talk", {"shot": "bzdura"}).shot == "MCU"
+    assert resolve("talk", {"shot": "nonsense"}).shot == "MCU"
     assert resolve("talk", {"side_dwell": "2.5"}).side_dwell == 2.5
 
 

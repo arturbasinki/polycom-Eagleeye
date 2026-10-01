@@ -8,6 +8,7 @@ used in the source exists.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import string
 import sys
@@ -27,12 +28,17 @@ from eagleeye import director, framing  # noqa: E402
 
 # Keys built at runtime (``t(f"director.mode.{mode}")``): prefix -> the values it is built from.
 # Tasks that introduce a family extend this table.
+_spec = importlib.util.spec_from_file_location("live_session", ROOT / "tools" / "live_session.py")
+live_session = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(live_session)       # importing it touches no hardware: main() does that
+
 DYNAMIC_FAMILIES: dict[str, list[str]] = {
     "director.mode.": [director.TRACKING, director.SEARCHING, director.LOST, director.WAITING],
     "director.axis.": [director.IDLE, director.ALERT, director.MOVING, director.FOLLOWING, director.BRAKING],
     "framing.side.": [framing.CENTER, framing.LEFT, framing.RIGHT],
     "profile.": ["talk", "presentation"],
     "shot.": ["CU", "MCU", "MS"],
+    "live_session.cue.": sorted({cue for script in live_session.SCRIPTS.values() for _, cue in script}),
 }
 
 

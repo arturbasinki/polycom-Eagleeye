@@ -48,7 +48,7 @@ class FakeStream:
 
 class NoPerson:
     last_ms = 0.0
-    description = "atrapa"
+    description = "fake"
 
     def observe(self, frame, t, previous):
         return None, []
@@ -56,7 +56,7 @@ class NoPerson:
 
 class Broken:
     last_ms = 0.0
-    description = "zepsuty"
+    description = "broken"
 
     def observe(self, frame, t, previous):
         raise RuntimeError("CUDA crashed")

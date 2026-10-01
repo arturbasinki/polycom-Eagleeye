@@ -23,21 +23,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from eagleeye.config import Store  # noqa: E402
+from eagleeye.config import Store, language_setting  # noqa: E402
 from eagleeye.geometry import deg  # noqa: E402
 from eagleeye.head_model import dynamics_from_settings  # noqa: E402
+from eagleeye.i18n import get_language, set_language, t  # noqa: E402
 from eagleeye.tracker import Tracker, TrackerSettings  # noqa: E402
 from eagleeye.v4l2 import (CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_TILT_ABSOLUTE,  # noqa: E402
                            ControlDevice, MjpegStream)
 
 START_DELAY = 5.0
+# (seconds, cue): a cue is the tail of a catalog key ``live_session.cue.<cue>``
 SCRIPTS = {
-    "presentation": [(0, "start za pięć sekund"), (5, "stój"), (20, "idź w lewo"), (27, "stój"),  # polish: deliberate
-                    (35, "idź w prawo"), (45, "stój"), (53, "idź w lewo szybko"), (59, "stój"),  # polish: deliberate
-                    (67, "wróć na środek"), (74, "stój"), (82, "wyjdź z kadru"), (115, "wróć"),  # polish: deliberate
-                    (140, "koniec")],  # polish: deliberate
-    "talk": [(0, "start za pięć sekund"), (5, "siedź normalnie"), (65, "odchyl się w bok"),  # polish: deliberate
-                (75, "wróć"), (95, "wstań"), (105, "usiądź"), (125, "koniec")],  # polish: deliberate
+    "presentation": [(0, "start"), (5, "stop"), (20, "left"), (27, "stop"),
+                     (35, "right"), (45, "stop"), (53, "left_fast"), (59, "stop"),
+                     (67, "center"), (74, "stop"), (82, "leave_frame"), (115, "return"),
+                     (140, "end")],
+    "talk": [(0, "start"), (5, "sit"), (65, "lean_aside"),
+             (75, "return"), (95, "stand"), (105, "sit_down"), (125, "end")],
 }
 
 
@@ -50,7 +52,7 @@ def _raise_stop(signum, frame):
 
 
 def say(text: str) -> None:
-    for cmd in (["notify-send", "-t", "4000", "EagleEye", text], ["spd-say", "-l", "pl", "-r", "10", text]):  # polish: deliberate
+    for cmd in (["notify-send", "-t", "4000", "EagleEye", text], ["spd-say", "-l", get_language(), "-r", "10", text]):
         try:
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
@@ -69,6 +71,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, _raise_stop)
 
     store = Store()
+    set_language(language_setting())
     ctl = ControlDevice(args.device)
     pan0, tilt0 = ctl.get(CID_PAN_ABSOLUTE), ctl.get(CID_TILT_ABSOLUTE)
     stream = MjpegStream(args.device, 1920, 1080)
@@ -82,20 +85,21 @@ def main() -> int:
     last = None
     try:
         while True:
-            t = time.monotonic() - t0
-            while cues and t >= cues[0][0]:
-                _, text = cues.pop(0)
+            elapsed = time.monotonic() - t0
+            while cues and elapsed >= cues[0][0]:
+                _, cue = cues.pop(0)
+                text = t(f"live_session.cue.{cue}")
                 say(text)
-                print(f"{t:6.1f}s >>> {text.upper()}", flush=True)
-                if text == "koniec":  # polish: deliberate
+                print(f"{elapsed:6.1f}s >>> {text.upper()}", flush=True)
+                if cue == "end":
                     raise Stop()
-            if not tracker.enabled and t >= START_DELAY:
+            if not tracker.enabled and elapsed >= START_DELAY:
                 tracker.set_enabled(True)
             s = tracker.state
             key = (s.mode, s.pan_state, s.tilt_state, s.moves)
             if tracker.enabled and key != last:
                 target = s.target.source if s.target else "-"
-                print(f"{t:6.1f}s {s.mode:9s} pan:{s.pan_state:9s} tilt:{s.tilt_state:9s} "
+                print(f"{elapsed:6.1f}s {s.mode:9s} pan:{s.pan_state:9s} tilt:{s.tilt_state:9s} "
                       f"head {s.pan / 3600:+6.1f}°/{s.tilt / 3600:+5.1f}° target:{target:5s} moves:{s.moves}",
                       flush=True)
                 last = key
