@@ -39,6 +39,15 @@ person moving. Here every detection is converted to an angle in the room (camera
 the moment the frame was exposed, plus the offset inside the frame), so camera motion
 cancels out.
 
+<p align="center">
+  <img src="assets/screenshot-tracking.png" width="900"
+       alt="Simulated tracking: a synthetic person in the preview with the golden-ratio overlay, next to a plot of the person's angle and the camera pan">
+</p>
+<p align="center"><em>Simulated tracking (a synthetic person, not a recording): the person leans 15° and the
+camera answers with a single move after a short dwell, then follows them back. The plot and the overlay come
+from the project's own simulator and overlay code; regenerate the image with
+<code>tools/render_sim_screenshot.py</code>.</em></p>
+
 ### Pipeline
 
 ```mermaid

@@ -36,6 +36,14 @@ Gdy kamera się obraca, cały obraz się przesuwa, a naiwny tracker wziąłby to
 człowieka. Tu każde wykrycie jest przeliczane na kąt w pokoju (kąt kamery w chwili
 naświetlenia klatki + przesunięcie w kadrze), więc ruch kamery się znosi.
 
+<p align="center">
+  <img src="assets/screenshot-tracking.png" width="900"
+       alt="Symulowane śledzenie: sztuczna osoba w podglądzie z nakładką złotego podziału, obok wykres kąta osoby i obrotu kamery">
+</p>
+<p align="center"><em>Symulowane śledzenie (sztuczna osoba, nie nagranie): osoba przechyla się o 15°, a kamera odpowiada
+jednym ruchem po krótkiej zwłoce, po czym podąża za nią z powrotem. Wykres i nakładka pochodzą z symulatora
+i kodu nakładki projektu; obraz odtworzysz poleceniem <code>tools/render_sim_screenshot.py</code>.</em></p>
+
 ### Potok
 
 ```mermaid
