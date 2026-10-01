@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from runner import run  # noqa: E402
 
+from eagleeye import i18n  # noqa: E402
 from eagleeye.trayproc import TrayProcess  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("eagleeye_tray", ROOT / "tray" / "eagleeye_tray.py")
@@ -29,11 +30,34 @@ def test_icon_follows_privacy() -> None:
     assert tray.ICON.exists() and tray.ICON_PRIVACY.exists()
 
 
-def test_tooltip_describes_state() -> None:
-    text = tray.tooltip({"camera": True, "tracking": True, "profile": "talk", "privacy": False})
-    assert "śledzenie" in text and "talk" in text
-    assert "prywatność" in tray.tooltip({"privacy": True})
-    assert "niepodłączona" in tray.tooltip({"camera": False})
+def test_tooltip_describes_state_in_both_languages() -> None:
+    state = {"camera": True, "tracking": True, "profile": "talk", "privacy": False}
+    try:
+        i18n.set_language("en")
+        text = tray.tooltip(state)
+        assert "tracking on" in text and "talk" in text
+        assert "privacy" in tray.tooltip({"privacy": True})
+        assert "not connected" in tray.tooltip({"camera": False})
+        i18n.set_language("pl")
+        text = tray.tooltip(state)
+        assert "śledzenie włączone" in text and "rozmowa" in text
+        assert "prywatność" in tray.tooltip({"privacy": True})
+    finally:
+        i18n.set_language("en")
+
+
+def test_tooltip_survives_an_unknown_profile() -> None:
+    assert "weird" in tray.tooltip({"camera": True, "tracking": False, "profile": "weird"})
+
+
+def test_menu_labels_follow_the_language() -> None:
+    try:
+        i18n.set_language("en")
+        assert tray.labels()["quit"] == "Quit"
+        i18n.set_language("pl")
+        assert tray.labels()["quit"] == "Zakończ"
+    finally:
+        i18n.set_language("en")
 
 
 def test_process_starts_and_stops() -> None:

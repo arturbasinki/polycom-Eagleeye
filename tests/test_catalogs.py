@@ -31,6 +31,7 @@ DYNAMIC_FAMILIES: dict[str, list[str]] = {
     "director.mode.": [director.TRACKING, director.SEARCHING, director.LOST, director.WAITING],
     "director.axis.": [director.IDLE, director.ALERT, director.MOVING, director.FOLLOWING, director.BRAKING],
     "framing.side.": [framing.CENTER, framing.LEFT, framing.RIGHT],
+    "profile.": ["talk", "presentation"],
 }
 
 
