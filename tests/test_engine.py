@@ -519,5 +519,30 @@ def test_selected_point_scales_the_tracker_target_to_the_frame() -> None:
     assert Engine._selected_point(suspended, frame) is None
 
 
+def test_reset_during_a_correction_wins() -> None:
+    engine, _ = light_engine(40)
+    engine.start()
+    try:
+        original = Engine._selected_point
+        engine._selected_point = lambda tracker, frame: (engine.reset_light(), original(tracker, frame))[1]
+        assert engine.correct_light().status == "ok"
+        assert not engine.light_active and engine.vcam.tone is None
+    finally:
+        engine.shutdown()
+
+
+def test_a_failure_keeps_an_existing_table() -> None:
+    engine, _ = light_engine(40, dets=[])
+    engine.start()
+    try:
+        table = np.arange(256, dtype=np.uint8)
+        engine._light_lut = table
+        engine.vcam.set_tone(table)
+        assert engine.correct_light().status == "no_person"
+        assert engine.light_active and np.array_equal(engine.vcam.tone, table)
+    finally:
+        engine.shutdown()
+
+
 if __name__ == "__main__":
     run(globals(), "Engine")

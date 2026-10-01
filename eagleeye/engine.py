@@ -102,6 +102,7 @@ class Engine:
         self.privacy = Privacy(self.vcam)
         self.ui = UiHooks()
         self._light_lut: np.ndarray | None = None      # light-correction table; memory only, gone after a restart
+        self._light_generation = 0                     # bumped by reset_light; drops a table computed before it
         self._lock = threading.RLock()
         self._busy_retry_s = busy_retry_s
         self._holders = holders
@@ -252,9 +253,11 @@ class Engine:
         """Measure the face in the latest raw camera frame and apply the resulting table.
 
         Runs on the caller's (worker) thread. A failure leaves the current table unchanged;
-        a face that is already well lit removes it."""
+        a face that is already well lit removes it. A "restore defaults" while the measurement
+        runs wins: its generation token makes this method drop the table."""
         with self._lock:
             stream, tracker = self.stream, self.tracker
+            generation = self._light_generation
         if stream is None or tracker is None:
             return LightResult(NO_FRAME)
         try:
@@ -266,16 +269,21 @@ class Engine:
         except Exception:
             log.exception("light correction failed")
             return LightResult(FAILED)
-        if result.status == OK:
-            self._set_light(result.lut)
-        elif result.status == WELL_LIT:
-            self._set_light(None)
+        with self._lock:
+            if generation == self._light_generation:      # a reset during the measurement wins
+                if result.status == OK:
+                    self._set_light(result.lut)
+                elif result.status == WELL_LIT:
+                    self._set_light(None)
         return result
 
     def reset_light(self) -> None:
-        self._set_light(None)
+        with self._lock:
+            self._light_generation += 1
+            self._set_light(None)
 
     def _set_light(self, lut: np.ndarray | None) -> None:
+        """Apply a table to the engine and the virtual camera as one step; callers hold ``_lock``."""
         self._light_lut = lut
         self.vcam.set_tone(lut)
 

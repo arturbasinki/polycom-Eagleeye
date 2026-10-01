@@ -362,6 +362,7 @@ def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
     finally:
         tr.stop()
 
+
 class Detecting:
     """Perception double that also answers detect() and notices overlapping calls."""
 
