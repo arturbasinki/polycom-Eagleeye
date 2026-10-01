@@ -32,6 +32,8 @@ from eagleeye.detectors import gpu_status
 from eagleeye.engine import Engine, UiHooks
 from eagleeye.framing import SHOTS
 from eagleeye.i18n import available_languages, msg, render, t
+from eagleeye import lightfix
+from eagleeye.lightfix import correct_jpeg, status_message
 from eagleeye.overlay import Shape, frame_point, overlay_shapes, selection_text
 from eagleeye.profiles import PROFILES, TUNABLE, resolve
 from eagleeye.trayproc import TrayProcess
@@ -137,6 +139,7 @@ class CameraApp:
         self._fps_ema = 0.0
         self._preview_fps_ema = 0.0
         self._last_jpg: bytes | None = None
+        self._light_busy = False
 
         self._build_widgets()
         self._build_layout()
@@ -293,6 +296,8 @@ class CameraApp:
         # only then do we know the list of controls and their ranges.
         self.image_body = ft.Column(spacing=9, controls=[])
         self.image_switches: list[ft.Control] = []
+        self.light_btn = ft.OutlinedButton(t("app.light_fix"), icon=ft.Icons.WB_SUNNY_OUTLINED,
+                                           on_click=self._on_correct_light)
 
         # --- tracking ---
         self.track_sw = ft.Switch(label=t("app.tracking_switch"), value=False, on_change=self._on_tracking_toggle)
@@ -457,8 +462,10 @@ class CameraApp:
                     ]),
                     self._card(t("app.card_image"), ft.Icons.TUNE, [
                         self.image_body,
-                        ft.OutlinedButton(t("app.image_reset"), icon=ft.Icons.RESTART_ALT,
-                                          on_click=self._on_reset_image),
+                        ft.Row([self.light_btn,
+                                ft.OutlinedButton(t("app.image_reset"), icon=ft.Icons.RESTART_ALT,
+                                                  on_click=self._on_reset_image)],
+                               spacing=8, wrap=True),
                     ]),
                     self._card(t("app.card_tracking"), ft.Icons.PSYCHOLOGY, [
                         ft.Row([self.track_sw, self.profile_dd, self.auto_zoom_sw], spacing=10, wrap=True),
@@ -918,7 +925,28 @@ class CameraApp:
             return
         self._notify(t("app.notice_snapshot_saved", path=path), OK)
 
+    def _light_button_disabled(self) -> bool:
+        return self._light_busy or self.stream is None or self.engine.privacy.active
+
+    async def _on_correct_light(self, _e) -> None:
+        """One-shot light correction. The work (one decoded frame, one detection) runs in a worker
+        thread; the button stays disabled meanwhile."""
+        if self._light_busy:
+            return
+        self._light_busy = True
+        self.light_btn.disabled = True
+        self.light_btn.update()
+        try:
+            result = await asyncio.to_thread(self.engine.correct_light)
+        finally:
+            self._light_busy = False
+            self.light_btn.disabled = self._light_button_disabled()
+            self.light_btn.update()
+        done = result.status in (lightfix.OK, lightfix.WELL_LIT)
+        self._notify(status_message(result).text(), OK if done else WARN)
+
     def _on_reset_image(self, _e) -> None:
+        self.engine.reset_light()
         if not self.controls:
             return
         # Auto balance last: writing the white balance turns auto off (AUTO_DEPENDENCIES).
@@ -1079,7 +1107,11 @@ class CameraApp:
             self._last_frame_id = frame_id
             self._last_jpg = jpg
 
-            self.preview.src = jpg
+            shown = jpg
+            lut = self.engine.light_lut
+            if lut is not None and PREVIEW_CORRECTION:
+                shown = await asyncio.to_thread(correct_jpeg, jpg, lut) or jpg
+            self.preview.src = shown
             self.preview.visible = True
             self.preview_placeholder.visible = False
 
@@ -1097,8 +1129,11 @@ class CameraApp:
                     self.preview.update()
                 if now - self._last_badge >= PREVIEW_BADGE_PERIOD:
                     self._last_badge = now
-                    self.preview_badge.value = (f"{self.stream.actual_width}×{self.stream.actual_height}"
-                                                f"  {self._preview_fps_ema:4.1f} fps")
+                    badge = (f"{self.stream.actual_width}×{self.stream.actual_height}"
+                             f"  {self._preview_fps_ema:4.1f} fps")
+                    if self.engine.light_active:
+                        badge += "  " + t("app.light_badge")
+                    self.preview_badge.value = badge
                     self.preview_badge.update()
             except Exception:
                 pass
@@ -1149,6 +1184,7 @@ class CameraApp:
                 # the slate and the switch must work when there is no device.
                 self.vcam_status.value = t("app.vcam_state", state=render(self.engine.vcam.status))
                 self.privacy_sw.value = self.engine.privacy.active
+                self.light_btn.disabled = self._light_button_disabled()
                 if (self.engine.tracker, self.engine.error) != self._shown:
                     self._sync_connection()
                     if self.engine.tracker is not None:

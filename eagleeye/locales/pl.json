@@ -243,5 +243,7 @@
   "light.no_person": "nie znaleziono osoby w kadrze",
   "light.no_skin": "za mało skóry do pomiaru",
   "light.ok": "światło skorygowane: jasność twarzy {before} → {after}",
-  "light.well_lit": "twarz jest już dobrze oświetlona"
+  "light.well_lit": "twarz jest już dobrze oświetlona",
+  "app.light_badge": "korekta światła włączona",
+  "app.light_fix": "skoryguj światło"
 }

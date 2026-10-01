@@ -6,7 +6,6 @@ so a reset that sets the temperature must then restore auto mode itself.
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -37,9 +36,20 @@ class FakeControls:
         return value
 
 
-def make_app(controls: FakeControls) -> CameraApp:
+class FakeEngine:
+    """Engine double: camera controls plus a counter for light-correction resets."""
+
+    def __init__(self, controls) -> None:
+        self.controls = controls
+        self.light_resets = 0
+
+    def reset_light(self) -> None:
+        self.light_resets += 1
+
+
+def make_app(controls) -> CameraApp:
     app = CameraApp.__new__(CameraApp)
-    app.engine = SimpleNamespace(controls=controls)
+    app.engine = FakeEngine(controls)
     app.switch_widgets = {}
     app.control_widgets = {}
     app._notify = lambda *_a, **_k: None
@@ -54,6 +64,18 @@ def test_reset_restores_every_image_control_including_auto_white_balance():
     wrong = {hex(c): (v, controls.defaults[c]) for c, v in controls.values.items()
              if v != controls.defaults[c]}
     assert not wrong, f"(is, factory): {wrong}"
+
+
+def test_reset_also_clears_the_light_correction() -> None:
+    app = make_app(FakeControls())
+    app._on_reset_image(None)
+    assert app.engine.light_resets == 1
+
+
+def test_reset_clears_the_light_correction_without_camera_controls() -> None:
+    app = make_app(None)
+    app._on_reset_image(None)
+    assert app.engine.light_resets == 1
 
 
 if __name__ == "__main__":

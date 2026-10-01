@@ -222,6 +222,10 @@ autofocusa i regulacją ręczną.
 **Obraz** — jasność, kontrast, nasycenie, odcień, gamma, ostrość, balans bieli
 (auto lub temperatura 2500–8000 K), kompensacja podświetlenia.
 
+**Korekta światła** — jedno kliknięcie mierzy twarz osoby w kadrze i nakłada na wirtualną
+kamerę oraz podgląd krzywą tonalną policzoną dla tej sceny, do „przywróć domyślne".
+Liczona jednorazowo, bez analizy każdej klatki; nie zapisuje się między uruchomieniami.
+
 **Presety** — zapis i odczyt kompletnych pozycji kamery (pan, tilt, zoom, ostrość),
 trzymane w `config.json`.
 
@@ -340,6 +344,7 @@ app.py                 okno Flet = widok silnika; zamknięcie chowa do zasobnika
     ├── detectors.py   detekcja: model pozy RTMO-s (ONNX Runtime CUDA/CPU), dekodowanie MJPEG
     ├── perception.py  punkt głowy celu z punktów pozy (nos, oczy, uszy)
     ├── identity.py    numery osób między klatkami (ścieżki w kątach świata + kolor ubrania), wybór osoby do śledzenia
+    ├── lightfix.py    jednorazowa krzywa tonalna z twarzy (korekta światła)
     ├── geometry.py    pole widzenia (zmierzona krzywa zoomu), piksel <-> kąt świata
     ├── head_model.py  gdzie kamera naprawdę patrzy (dynamika firmware'u)
     ├── target_filter.py  Kalman w kątach świata

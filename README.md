@@ -223,6 +223,9 @@ For another unit, `tools/measure_dynamics.py`, `tools/measure_zoom.py` and
 - **Optics**: zoom (slider and buttons), autofocus switch or manual focus.
 - **Image**: brightness, contrast, saturation, hue, gamma, sharpness, white balance (auto or
   2500–8000 K), backlight compensation.
+- **Light correction**: one click measures the face of the person in the frame and applies a tone
+  curve computed for that scene to the virtual camera and the preview, until "restore defaults".
+  Computed once, no per-frame analysis; not kept across restarts.
 - **Presets**: complete camera poses (pan, tilt, zoom, focus), stored in `config.json`.
 - **Language**: English and Polish interface, picked up automatically from the system
   language and switchable in the app.
@@ -306,6 +309,7 @@ app.py                 Flet window = a view of the engine; closing hides to tray
     ├── detectors.py   RTMO-s pose model (ONNX Runtime CUDA/CPU), MJPEG decoding
     ├── perception.py  head point from pose keypoints
     ├── identity.py    person numbering across frames, click-to-follow selection
+    ├── lightfix.py    one-shot face-driven tone curve (light correction)
     ├── geometry.py    field of view (measured zoom curve), pixel <-> world angle
     ├── head_model.py  where the camera really looks (firmware dynamics)
     ├── target_filter.py  Kalman filter in world angles
