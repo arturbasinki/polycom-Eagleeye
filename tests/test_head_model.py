@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model głowicy: przewidywanie rzeczywistego kąta z historii rozkazów.
+"""Camera-head model: predicting the real angle from the command history.
 
     .venv/bin/python tests/test_head_model.py
 """
@@ -106,7 +106,7 @@ def test_velocity_marks_position_inexact_until_absolute_move() -> None:
 
 
 def test_tilt_has_its_own_trajectory() -> None:
-    # Tilt jest wolniejszy niż pan (tools/measure_trajectory.py, 2026-09-26).
+    # Tilt is slower than pan (tools/measure_trajectory.py, 2026-09-26).
     dyn = Dynamics(tilt_abs_latency=0.10, tilt_abs_base=0.80, tilt_abs_speed=deg(66.5), tilt_abs_nu=0.7)
     h = HeadModel(dyn)
     h.command_absolute("pan", deg(10), 0.0)
@@ -125,7 +125,7 @@ def test_tilt_without_own_values_uses_pan() -> None:
 
 
 def test_calibration_is_the_default_without_config() -> None:
-    # Kalibracja egzemplarza jest w kodzie: brak albo utrata config.json jej nie zmienia.
+    # The unit calibration is in the code: a missing or lost config.json does not change it.
     assert dynamics_from_settings(None) == Dynamics()
     assert dynamics_from_settings({}) == Dynamics()
     d = Dynamics()
@@ -172,4 +172,4 @@ def test_dynamics_from_settings_reads_zoom_fields() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Model głowicy")
+    run(globals(), "Camera-head model")

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Testy na prawdziwej kamerze (bez człowieka w kadrze).
+"""Tests on the real camera (without a person in frame).
 
-1. Strażnik: rozkaz prędkości bez odświeżania zatrzymuje się sam.
-2. Zakotwiczenie: po ruchu prędkościowym ruch absolutny (z obejściem "ta sama
-   wartość") wraca dokładnie na pozycję startową - sprawdzane obrazem.
+1. Watchdog: a velocity command without a refresh stops by itself.
+2. Anchoring: after a velocity move, an absolute move (with the "same value"
+   workaround) returns exactly to the start position - checked with the image.
 
-Wymaga wolnej kamery i kadru z teksturą. Pozycja jest przywracana.
+Requires a free camera and a frame with texture. The position is restored.
 
     .venv/bin/python tests/test_tracking_live.py
 """
@@ -53,7 +53,7 @@ def with_camera(body) -> None:
         stream = MjpegStream(DEVICE, W, H)
         stream.start()
     except (OSError, V4L2Error) as exc:
-        print(f"    POMINIĘTY: kamera niedostępna ({exc})")
+        print(f"    SKIPPED: camera unavailable ({exc})")
         return
     head = HeadModel()
     act = Actuator(ctl, head)
@@ -75,7 +75,7 @@ def test_watchdog_stops_real_camera() -> None:
         try:
             act.velocity("pan", 1, time.monotonic())
             time.sleep(0.8)
-            assert ctl.get(CID_PAN_SPEED) == 0, "strażnik nie wyzerował prędkości"
+            assert ctl.get(CID_PAN_SPEED) == 0, "the watchdog did not zero the velocity"
         finally:
             act.stop_watchdog()
     with_camera(body)
@@ -91,14 +91,14 @@ def test_absolute_move_reanchors_after_velocity() -> None:
         time.sleep(0.5)
         act.velocity("pan", 0, time.monotonic())
         time.sleep(1.5)
-        act.move_absolute("pan", start, time.monotonic())     # ta sama wartość co ostatni zapis
+        act.move_absolute("pan", start, time.monotonic())     # the same value as the last write
         now = settle(stream, last, 3.0)
         (dx, _), response = cv2.phaseCorrelate(ref, now, window)
         err = abs(dx) * View(W, H).arcsec_per_px / 3600
-        print(f"    powrót: błąd {err:.2f}° (pewność {response:.2f})")
-        assert err < 0.3, f"głowica nie wróciła na pozycję ({err:.2f}°)"
+        print(f"    return: error {err:.2f}° (confidence {response:.2f})")
+        assert err < 0.3, f"the head did not return to position ({err:.2f}°)"
     with_camera(body)
 
 
 if __name__ == "__main__":
-    run(globals(), "Testy na kamerze")
+    run(globals(), "Tests on the camera")

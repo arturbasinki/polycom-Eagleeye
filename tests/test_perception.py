@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Percepcja: punkt głowy z pozy (RTMO-s), wybór celu, dekodowanie w skali 1/2.
+"""Perception: the head point from the pose (RTMO-s), target choice, half-scale decoding.
 
     .venv/bin/python tests/test_perception.py
 """
@@ -25,11 +25,11 @@ FRAME = np.zeros((540, 960, 3), np.uint8)
 
 
 def person(x: int, y: int, w: int, h: int, head: dict[int, tuple[float, float]], score: float = 0.9) -> Detection:
-    """Osoba z punktami COCO: w ``head`` indeks -> (x, y) widocznych punktów (0 nos, 1-2 oczy, 3-4 uszy)."""
+    """Person with COCO keypoints: in ``head`` index -> (x, y) of visible points (0 nose, 1-2 eyes, 3-4 ears)."""
     kps = [HIDDEN] * 17
     for i, (px, py) in head.items():
         kps[i] = (px, py, 0.9)
-    kps[5] = (x + w * 0.7, y + h * 0.25, 0.9)      # barki - nie są punktami głowy
+    kps[5] = (x + w * 0.7, y + h * 0.25, 0.9)      # shoulders - they are not head points
     kps[6] = (x + w * 0.3, y + h * 0.25, 0.9)
     return Detection(x, y, w, h, score, "poza", tuple(kps))
 
@@ -65,7 +65,7 @@ def test_back_view_uses_ears() -> None:
 
 
 def test_no_visible_head_points_means_top_of_box() -> None:
-    """Głowa nad kadrem (stojąca osoba blisko kamery): punkt na górnej krawędzi - kamera jedzie w górę."""
+    """Head above the frame (a standing person close to the camera): the point sits on the top edge - the camera moves up."""
     headless = person(300, 0, 200, 540, {})
     assert head_point(headless) == (400.0, 0.0)
 
@@ -138,15 +138,15 @@ def test_yaw_needs_nose_and_two_side_points() -> None:
 
 
 def test_head_scale_is_eyes_to_shoulders() -> None:
-    # FRONTAL: oczy y=140, barki y = 80 + 460 * 0.25 = 195
+    # FRONTAL: eyes y=140, shoulders y = 80 + 460 * 0.25 = 195
     assert abs(head_scale_px(FRONTAL) - 55.0) < 1e-6
 
 
 def test_head_scale_without_shoulders_is_none() -> None:
-    # Odbiór 2026-09-25: awaryjny iloraz oczy→barki (EYE_TO_SHOULDER) nie da się
-    # skalibrować - iloraz zależy od obrotu głowy (3,1 wprost, 5,3 w profilu), a
-    # przełączanie źródeł przy migotaniu barków skakało 1,8x i pompowało zoom.
-    # Bez barków - None; filtr utrzymuje ostatnią skalę (test_missing_..._keep_previous).
+    # Acceptance 2026-09-25: the emergency eyes→shoulders ratio (EYE_TO_SHOULDER) cannot be
+    # calibrated - the ratio depends on head rotation (3.1 face-on, 5.3 in profile), and
+    # switching sources when the shoulders flicker jumped 1.8x and pumped the zoom.
+    # Without shoulders - None; the filter keeps the last scale (test_missing_..._keep_previous).
     kps = list(FRONTAL.keypoints)
     kps[5] = kps[6] = HIDDEN
     det = Detection(300, 80, 200, 460, 0.9, "poza", tuple(kps))
@@ -159,7 +159,7 @@ def test_head_scale_without_eyes_is_none() -> None:
 
 
 def test_observation_from_a_chosen_detection() -> None:
-    """Osoba wskazana kliknięciem: ta sama obserwacja co z pick(), tylko z wybranego wykrycia."""
+    """Person pointed at by a click: the same observation as from pick(), only from the chosen detection."""
     obs = Perception(FakePose([])).observation(FRONTAL, 3.5)
     assert (obs.x, obs.y, obs.t, obs.source, obs.box) == (400.0, 144.0, 3.5, "poza", FRONTAL.as_box())
     assert abs(obs.yaw) < 0.05 and abs(obs.head_scale_px - 55.0) < 1e-6
@@ -171,4 +171,4 @@ def test_observe_fills_yaw_and_scale() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Percepcja")
+    run(globals(), "Perception")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reżyser: kalibracja startowa (skan), drabina utraty celu, powrót zoomu.
+"""Director: startup calibration (scan), the target-loss ladder, zoom restore.
 
     .venv/bin/python tests/test_director_search.py
 """
@@ -29,7 +29,7 @@ DT = 1 / 15
 
 
 class Rig:
-    """Reżyser + model głowicy + zoom, który zmienia się po rozkazach."""
+    """Director + camera-head model + zoom that changes with the commands."""
 
     def __init__(self, profile, zoom: float = 0.0, pan: float = 0.0) -> None:
         self.d = Director(profile, LIM, DYN)
@@ -61,7 +61,7 @@ def nobody(t, rig):
 
 
 def visible_at(pan: float, tilt: float):
-    """Osoba stoi w (pan, tilt); widać ją, gdy kamera stoi i ma ją w kadrze."""
+    """Person stands at (pan, tilt); visible when the camera is still and has them in frame."""
     def fn(t, rig):
         cam_pan, cam_tilt = rig.h.angles(t)
         v = rig.view()
@@ -129,11 +129,11 @@ def test_exhausted_search_goes_home_and_rescans() -> None:
     assert home == [deg(10), deg(-3)]
     before = len(r.log)
     r.run(RESCAN_AFTER + 1.0, nobody, t0=t)
-    assert len(r.log) > before, "po 60 s skan startuje ponownie"
+    assert len(r.log) > before, "after 60 s the scan starts again"
 
 
 def tracked(r: Rig, pan: float, v_pan: float, seconds: float) -> float:
-    """Śledzi stojący/idący cel przez chwilę, potem cel znika."""
+    """Tracks a standing/walking target for a while, then the target vanishes."""
     return r.run(seconds, lambda t, rig: TargetEstimate(pan + v_pan * t, 0.0, v_pan, 0.0, t, t))
 
 
@@ -148,9 +148,9 @@ def test_lost_at_edge_while_walking_catches_up() -> None:
 
 
 def test_talk_does_not_catch_up_but_waits_at_last_azimuth() -> None:
-    """Sesja 20260923-020939: w chwili utraty prędkość filtra była bezwartościowa (luki
-    w detekcji), więc doganianie strzelało 54-61° za daleko, powtarzało się, a dopiero
-    powrót na ostatni azymut trafiał w osobę. W rozmowie od razu ostatni azymut."""
+    """Session 20260923-020939: at the moment of loss the filter velocity was worthless
+    (detection gaps), so catching up overshot 54-61°, repeated, and only returning to the
+    last azimuth hit the person. In talk mode, the last azimuth right away."""
     r = Rig(TALK)
     last_pan = 0.45 * r.view().hfov
     t = r.run(1.0, lambda t, rig: TargetEstimate(last_pan, 0.0, deg(15), 0.0, t, t))
@@ -166,7 +166,7 @@ def test_lost_in_middle_goes_to_last_azimuth_then_zooms_out_later() -> None:
     r.log.clear()
     t = r.run(1.0, nobody, t0=t)
     kinds = [(c.kind, c.axis) for _, c in r.log]
-    assert ("abs", "pan") in kinds and ("zoom", "zoom") not in kinds, "krótka utrata nie oddala"
+    assert ("abs", "pan") in kinds and ("zoom", "zoom") not in kinds, "a short loss does not zoom out"
     r.run(TALK.ladder_step_time + 1.0, nobody, t0=t)
     assert [c.value for _, c in r.log if c.kind == "zoom"] == [0.0]
 
@@ -204,8 +204,8 @@ def test_presentation_runs_local_search_then_goes_home() -> None:
 
 
 def test_local_search_without_home_returns_to_last_azimuth() -> None:
-    """Sesja 20260923-004030: bez presetu "dom" kamera została w ostatnim punkcie skanu
-    lokalnego (-72° od miejsca utraty) i patrzyła w ścianę."""
+    """Session 20260923-004030: without a "home" preset the camera stayed at the last local
+    scan point (-72° from the loss spot) and looked at a wall."""
     r = Rig(PRESENTATION)
     t = tracked(r, deg(28), 0.0, 1.0)
     r.log.clear()
@@ -222,14 +222,14 @@ def test_waiting_after_local_search_rescans() -> None:
     t = r.run(30.0, nobody, t0=t)
     before = len(r.log)
     r.run(RESCAN_AFTER + 1.0, nobody, t0=t)
-    assert len(r.log) > before, "czekanie po szukaniu lokalnym musi kiedyś znów szukać"
+    assert len(r.log) > before, "waiting after a local search must eventually search again"
 
 
 def test_person_returning_is_reacquired() -> None:
     r = Rig(TALK, zoom=800.0)
     t = tracked(r, 0.0, 0.0, 1.0)
-    # Oddalenie przychodzi po dojeździe na ostatni azymut + ladder_step_time (przy
-    # zmierzonej dynamice tiltu: 5,0 s) - czekamy dłużej, żeby było co przywracać.
+    # The zoom-out comes after arriving at the last azimuth + ladder_step_time (with the
+    # measured tilt dynamics: 5.0 s) - we wait longer so there is something to restore.
     t = r.run(6.0, nobody, t0=t)
     r.log.clear()
     r.run(2.0, visible_at(0.0, 0.0), t0=t)
@@ -264,4 +264,4 @@ def test_status_notes_are_messages_with_catalog_keys() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Reżyser: szukanie i utrata celu")
+    run(globals(), "Director: searching and target loss")

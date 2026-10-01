@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prywatność: plansza natychmiast, obiektyw w dół, powrót do stanu sprzed.
+"""Privacy: the slate immediately, the lens down, a return to the previous state.
 
     .venv/bin/python tests/test_privacy.py
 """
@@ -96,4 +96,4 @@ def test_enable_twice_keeps_first_saved_pose() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Prywatność")
+    run(globals(), "Privacy")

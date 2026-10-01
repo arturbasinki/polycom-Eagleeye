@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""ControlDevice po zamknięciu: błąd V4L2Error, a nie ValueError z fcntl.
+"""ControlDevice after close: a V4L2Error, not a ValueError from fcntl.
 
-Ponowne "Połącz" w aplikacji zamykało stare kontrolki, zanim zatrzymał się
-tracker; jego stop() pisał na fd=-1 i wybuchał ValueError, którego nikt nie
-łapał (zabezpieczenia łapią V4L2Error).
+Clicking "Connect" again in the app closed the old controls before the
+tracker stopped; its stop() wrote to fd=-1 and raised a ValueError that nobody
+caught (the guards catch V4L2Error).
 
     .venv/bin/python tests/test_v4l2_closed.py
 """
@@ -31,7 +31,7 @@ def test_set_on_closed_device_raises_v4l2_error() -> None:
         closed_device().set(CID_PAN_SPEED, 0)
     except V4L2Error:
         return
-    raise AssertionError("oczekiwano V4L2Error")
+    raise AssertionError("expected V4L2Error")
 
 
 def test_get_on_closed_device_raises_v4l2_error() -> None:
@@ -39,7 +39,7 @@ def test_get_on_closed_device_raises_v4l2_error() -> None:
         closed_device().get(CID_PAN_SPEED)
     except V4L2Error:
         return
-    raise AssertionError("oczekiwano V4L2Error")
+    raise AssertionError("expected V4L2Error")
 
 
 def test_tracker_stop_survives_closed_controls() -> None:
@@ -50,8 +50,8 @@ def test_tracker_stop_survives_closed_controls() -> None:
     ctl = FakeControls()
     tr = make(controls=ctl)
     tr.controls = tr.core.actuator.controls = closed_device()
-    tr.stop()       # nie może rzucić
+    tr.stop()       # must not raise
 
 
 if __name__ == "__main__":
-    run(globals(), "Zamknięte urządzenie")
+    run(globals(), "Closed device")

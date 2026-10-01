@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Wirtualna kamera na prawdziwym urządzeniu: zapis i odczyt z drugiej strony (OpenCV).
+"""Virtual camera on the real device: write and read from the other side (OpenCV).
 
-Wymaga modułu v4l2loopback z kartą "EagleEye" i wolnej kamery.
+Requires the v4l2loopback module with the "EagleEye" card and a free camera.
 
     .venv/bin/python tests/test_vcam_live.py
 """
@@ -40,13 +40,13 @@ def read_output(path: str):
 def test_output_matches_camera_and_privacy_card() -> None:
     path = find_device_by_card(CARD_LABEL)
     if path is None:
-        print("    POMINIĘTY: brak urządzenia EagleEye (Task 2, krok 6)")
+        print("    SKIPPED: no EagleEye device (Task 2, step 6)")
         return
     try:
         stream = MjpegStream("/dev/video0", 1280, 720)
         stream.start()
     except (OSError, V4L2Error) as exc:
-        print(f"    POMINIĘTY: kamera zajęta ({exc})")
+        print(f"    SKIPPED: camera busy ({exc})")
         return
     vc = VirtualCamera()
     vc.set_source(stream)
@@ -56,21 +56,21 @@ def test_output_matches_camera_and_privacy_card() -> None:
         out = read_output(path)
         _, jpg, _ = stream.frame_timed(0)
         cam = decode_mjpeg(jpg)
-        assert out is not None and out.shape == (720, 1280, 3), f"odczyt z {path} nie działa"
+        assert out is not None and out.shape == (720, 1280, 3), f"read from {path} does not work"
         g1 = cv2.resize(cv2.cvtColor(out, cv2.COLOR_BGR2GRAY), (160, 90)).astype(float).ravel()
         g2 = cv2.resize(cv2.cvtColor(cam, cv2.COLOR_BGR2GRAY), (160, 90)).astype(float).ravel()
         corr = float(np.corrcoef(g1, g2)[0, 1])
-        print(f"    {path}: {out.shape}, korelacja z kamerą {corr:.2f}, status {vc.status}")
+        print(f"    {path}: {out.shape}, correlation with the camera {corr:.2f}, status {vc.status}")
         assert corr > 0.8
         vc.set_privacy(True)
         time.sleep(0.5)
         card = read_output(path)
-        print(f"    plansza: średnia jasność {card.mean():.0f}")
-        assert card.mean() < 60, "plansza prywatności powinna być ciemna"
+        print(f"    slate: mean brightness {card.mean():.0f}")
+        assert card.mean() < 60, "the privacy slate should be dark"
     finally:
         vc.stop()
         stream.stop()
 
 
 if __name__ == "__main__":
-    run(globals(), "Wirtualna kamera na sprzęcie")
+    run(globals(), "Virtual camera on hardware")

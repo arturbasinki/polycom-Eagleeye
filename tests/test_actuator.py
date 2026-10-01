@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wykonawca: zapisy do kamery, obejście "ta sama wartość", strażnik prędkości.
+"""Actuator: writes to the camera, the "same value" workaround, the velocity watchdog.
 
     .venv/bin/python tests/test_actuator.py
 """
@@ -106,8 +106,9 @@ def test_sync_stops_leftover_motion_and_adopts_readback() -> None:
 
 
 def test_sync_stops_leftover_continuous_zoom() -> None:
-    # Kamera pamięta zoom ciągły (np. -1 z dawnego suwaka) i jedzie optyką do oporu,
-    # a odczyt ZOOM_ABSOLUTE zostaje stary - model głowicy myliłby się co do kąta widzenia.
+    # The camera remembers continuous zoom (e.g. -1 from an old slider) and drives the optics to
+    # the limit, while the ZOOM_ABSOLUTE readback stays old - the camera-head model would be wrong
+    # about the field of view.
     ctl, _, act = rig(x9a090f=-1)
     act.sync_from_device(t=0.0)
     assert ctl.writes_to(CID_ZOOM_CONTINUOUS) == [0]
@@ -141,10 +142,10 @@ def test_zoom_command_starts_zoom_motion() -> None:
 def test_external_zoom_change_is_detected_at_rest() -> None:
     ctl, _, act = rig()
     act.apply([Command("zoom", "zoom", 2400)], t=0.0)
-    ctl.values[CID_ZOOM_ABSOLUTE] = 3000                  # ktoś kliknął preset w trakcie jazdy
-    assert act.refresh_zoom(t=0.1) is False, "optyka jedzie - odczyt niepewny, nie oceniamy"
+    ctl.values[CID_ZOOM_ABSOLUTE] = 3000                  # someone clicked a preset during the move
+    assert act.refresh_zoom(t=0.1) is False, "the optics are moving - the readback is uncertain, we do not judge"
     assert act.refresh_zoom(t=10.0) is True and act.zoom_value == 3000
-    assert act.refresh_zoom(t=11.0) is False, "raz zgłoszone - nowa wartość przyjęta"
+    assert act.refresh_zoom(t=11.0) is False, "reported once - the new value accepted"
 
 
 def test_own_zoom_is_not_external() -> None:
@@ -160,4 +161,4 @@ def test_refresh_without_time_only_reads() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Wykonawca")
+    run(globals(), "Actuator")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Geometria kamery: pole widzenia, zoom, przeliczenia piksel <-> kąt świata.
+"""Camera geometry: field of view, zoom, pixel <-> world angle conversions.
 
     .venv/bin/python tests/test_geometry.py
 """
@@ -51,13 +51,13 @@ def test_full_zoom_narrows_fov() -> None:
 
 
 def test_zoom_follows_measured_curve() -> None:
-    # Pomiar 2026-09-24 (dopasowanie klatki z zoomem do klatki bez zoomu, 1920x1080):
-    # zoom 800 -> 1.23x, 2400 -> 1.99x, 4000 -> 3.80x. Model liniowy dawał 5.65x przy 2400,
-    # przez co każdy ruch pokonywał ~35% drogi (śledzenie „na raty”).
+    # Measurement 2026-09-24 (matching a zoomed frame to an unzoomed frame, 1920x1080):
+    # zoom 800 -> 1.23x, 2400 -> 1.99x, 4000 -> 3.80x. The linear model gave 5.65x at 2400,
+    # so every move covered ~35% of the way (tracking "in instalments").
     for value, measured in ((800, 1.233), (2400, 1.985), (4000, 3.804)):
         assert abs(zoom_factor(value) / measured - 1.0) < 0.02, (value, zoom_factor(value))
     fov_2400 = View(1280, 720, zoom_value=2400).hfov / 3600
-    assert 35.0 < fov_2400 < 38.0              # zmierzone 36.1° (dopasowanie) i 37.2° (ruch pan)
+    assert 35.0 < fov_2400 < 38.0              # measured 36.1° (matching) and 37.2° (pan move)
 
 
 def test_zoom_factor_is_monotonic_from_1_to_max() -> None:
@@ -93,4 +93,4 @@ def test_zoom_value_for_clamps_outside_range() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Geometria")
+    run(globals(), "Geometry")

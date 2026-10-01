@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wirtualna kamera: konwersja klatek do I420 i plansze.
+"""Virtual camera: frame conversion to I420 and the slates.
 
     .venv/bin/python tests/test_vcam.py
 """
@@ -42,7 +42,7 @@ def test_red_frame_converts_to_expected_yuv() -> None:
     bgr[:, :, 2] = 255
     y, u, v = planes(bgr_to_i420(bgr))
     assert abs(y.mean() - 76) < 3 and v.mean() > 200 and u.mean() < 110
-    # BT.601: Cb czerwieni = 128 - 0.1687*255 = 85 (analogowe YUV dawało 90)
+    # BT.601: red Cb = 128 - 0.1687*255 = 85 (analog YUV gave 90)
     assert abs(u.mean() - 85) < 2
 
 
@@ -53,11 +53,11 @@ def test_jpeg_is_scaled_to_output_size() -> None:
 
 
 def test_jpeg_colors_match_bgr_reference() -> None:
-    """Szybka ścieżka (JPEG wprost do YCbCr) daje te same kolory co przez BGR (BT.601)."""
+    """The fast path (JPEG straight to YCbCr) gives the same colors as through BGR (BT.601)."""
     rng = np.random.default_rng(7)
     bgr = cv2.resize(rng.integers(0, 256, (27, 48, 3), np.uint8), (1920, 1080),
                      interpolation=cv2.INTER_CUBIC)
-    bgr[:360, :640] = (0, 0, 255)       # czysta czerwień i biel - skraje zakresu
+    bgr[:360, :640] = (0, 0, 255)       # pure red and white - the range extremes
     bgr[:360, 640:1280] = 255
     ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 95])
     assert ok
@@ -68,7 +68,7 @@ def test_jpeg_colors_match_bgr_reference() -> None:
     diff = np.abs(fast - slow)
     assert diff[:W * H].mean() < 0.5 and diff[W * H:].mean() < 0.5, (diff[:W * H].mean(), diff[W * H:].mean())
     y, _, _ = planes(jpeg_to_i420(buf.tobytes()))
-    assert y.reshape(H, W)[20:200, 450:800].max() >= 250    # biel w pełnym zakresie, nie 235
+    assert y.reshape(H, W)[20:200, 450:800].max() >= 250    # white at full range, not 235
 
 
 def test_garbage_jpeg_is_none() -> None:
@@ -78,7 +78,7 @@ def test_garbage_jpeg_is_none() -> None:
 def test_card_renders_text_with_polish_letters() -> None:
     card = render_card(*card_texts(PRIVACY_CARD))
     assert card.shape == (H, W, 3)
-    assert (card != card[0, 0]).any(axis=2).sum() > 1000, "brak pikseli tekstu"
+    assert (card != card[0, 0]).any(axis=2).sum() > 1000, "no text pixels"
 
 
 def test_privacy_and_no_signal_cards_differ() -> None:
@@ -102,7 +102,7 @@ class FakeDevice:
 
 
 class FakeSource:
-    """Jak MjpegStream.frame_timed: nowa klatka tylko po push()."""
+    """Like MjpegStream.frame_timed: a new frame only after push()."""
 
     def __init__(self) -> None:
         self.n = 0
@@ -241,7 +241,7 @@ def test_output_device_rejects_non_video_node() -> None:
         OutputDevice("/dev/null", (1280, 720)).open()
     except V4L2Error:
         return
-    raise AssertionError("oczekiwano V4L2Error")
+    raise AssertionError("expected V4L2Error")
 
 
 def test_card_name_of_non_video_node_is_none() -> None:
@@ -249,4 +249,4 @@ def test_card_name_of_non_video_node_is_none() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Wirtualna kamera: klatki i plansze")
+    run(globals(), "Virtual camera: frames and slates")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wczytywanie config.json: dynamika głowicy.
+"""Loading config.json: camera-head dynamics.
 
     .venv/bin/python tests/test_config.py
 """
@@ -82,4 +82,4 @@ def test_language_setting_reads_config_without_the_store() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Konfiguracja")
+    run(globals(), "Configuration")

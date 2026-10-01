@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tożsamość osób: ścieżki w świecie, kolor ubrania, wybór celu.
+"""Person identity: world paths, clothing color, target selection.
 
     .venv/bin/python tests/test_identity.py
 """
@@ -26,12 +26,12 @@ FPS = 15.0
 
 
 def to_world(x: float, y: float) -> tuple[float, float]:
-    """Stała skala 100 arcsec/px, tilt rośnie w górę - jak View z zoomem 0 (uproszczone)."""
+    """Constant scale 100 arcsec/px, tilt rises upward - like View at zoom 0 (simplified)."""
     return x * 100.0, -y * 100.0
 
 
 def scene(*people):
-    """Klatka z kolorowymi tułowiami i lista wykryć; osoba = (środek x, góra y, kolor)."""
+    """Frame with colored torsos and the list of detections; person = (center x, top y, color)."""
     frame = np.full((H, W, 3), 40, np.uint8)
     dets = []
     for cx, top, color in people:
@@ -51,7 +51,7 @@ def scene(*people):
 
 
 def feed(pt: PersonTracker, t: float, *people, cam: float = 0.0, **kw):
-    """``cam``: przesunięcie kamery w pikselach - świat = piksel + cam (kamera się obróciła)."""
+    """``cam``: camera shift in pixels - world = pixel + cam (the camera turned)."""
     frame, dets = scene(*people)
     return pt.update(dets, frame, t, lambda x, y: to_world(x + cam, y), **kw)
 
@@ -73,14 +73,14 @@ def test_crossing_people_keep_their_ids() -> None:
     tracks = feed(pt, 0.0, (300, 100, RED), (600, 100, BLUE))
     red_id = by_color(tracks, 300).id
     blue_id = by_color(tracks, 600).id
-    for i in range(1, 46):                        # schodzą się, mijają i rozchodzą
+    for i in range(1, 46):                        # they come together, pass and separate
         tracks = feed(pt, i / FPS, (300 + 10 * i, 100, RED), (600 - 10 * i, 100, BLUE))
     assert by_color(tracks, 750).id == red_id
     assert by_color(tracks, 150).id == blue_id
 
 
 def test_camera_jump_keeps_the_same_person() -> None:
-    """Ruch absolutny kamery przesuwa osobę w pikselach o 300 px w jednej klatce; w świecie stoi."""
+    """An absolute camera move shifts the person in pixels by 300 px in one frame; in the world they stand still."""
     pt = PersonTracker()
     tid = feed(pt, 0.0, (400, 100, RED))[0].id
     tracks = feed(pt, 0.07, (100, 100, RED), cam=300.0)
@@ -88,7 +88,7 @@ def test_camera_jump_keeps_the_same_person() -> None:
 
 
 def test_person_at_the_frame_edge_does_not_break() -> None:
-    """Ramka wystaje poza klatkę, tułów prawie poza obrazem: bez wyjątku, ścieżka istnieje."""
+    """The box sticks out beyond the frame, the torso almost out of the image: no exception, the path exists."""
     pt = PersonTracker()
     tid = feed(pt, 0.0, (10, 100, RED))[0].id
     tracks = feed(pt, 0.07, (12, 100, RED))
@@ -96,7 +96,7 @@ def test_person_at_the_frame_edge_does_not_break() -> None:
 
 
 def test_returning_person_wins_over_a_closer_stranger() -> None:
-    """Sam ruch wybrałby obcego (bliżej ostatniego miejsca); kolor ubrania wskazuje właściwą osobę."""
+    """Motion alone would pick a stranger (closer to the last spot); the clothing color points to the right person."""
     pt = PersonTracker()
     tid = feed(pt, 0.0, (400, 100, RED))[0].id
     feed(pt, 0.5, protect=tid, protect_s=6.0)
@@ -108,7 +108,7 @@ def test_returning_person_wins_over_a_closer_stranger() -> None:
 def test_same_person_is_recognised_after_short_absence() -> None:
     pt = PersonTracker()
     tid = feed(pt, 0.0, (400, 100, RED))[0].id
-    for i in range(1, 30):                        # 2 s bez wykrycia
+    for i in range(1, 30):                        # 2 s without a detection
         feed(pt, i / FPS, protect=tid, protect_s=6.0)
     tracks = feed(pt, 2.0, (420, 100, RED), protect=tid, protect_s=6.0)
     assert [tr.id for tr in tracks] == [tid] and tracks[0].det is not None
@@ -120,7 +120,7 @@ def test_stranger_in_the_same_place_is_not_adopted() -> None:
     feed(pt, 0.5, protect=tid, protect_s=6.0)
     tracks = feed(pt, 1.0, (400, 100, GREEN), protect=tid, protect_s=6.0)
     ids = {tr.id: tr for tr in tracks}
-    assert ids[tid].det is None, "zawieszona ścieżka nie przejmuje obcego"
+    assert ids[tid].det is None, "a suspended path does not adopt a stranger"
     assert len(tracks) == 2
 
 
@@ -133,8 +133,8 @@ def test_ambiguous_candidates_do_not_reacquire() -> None:
 
 
 def test_two_similar_strangers_after_a_longer_gap_are_not_adopted() -> None:
-    """Po 2 s położenie waży mało (bramka ~2 wysokości ciała), więc dwóch obcych w podobnym
-    ubraniu nie wolno rozstrzygać odległością: zawieszona ścieżka nie zgaduje."""
+    """After 2 s, position weighs little (a gate of ~2 body heights), so two strangers in similar
+    clothing must not be decided by distance: a suspended path does not guess."""
     pt = PersonTracker()
     tid = feed(pt, 0.0, (500, 100, RED))[0].id
     feed(pt, 1.0, protect=tid, protect_s=6.0)
@@ -174,7 +174,7 @@ def test_track_at_prefers_the_closer_head_and_skips_hidden() -> None:
              TrackInfo(3, (0, 0, 50, 50), (25.0, 10.0), False))
     assert track_at(infos, 240, 200) == 2
     assert track_at(infos, 160, 200) == 1
-    assert track_at(infos, 20, 20) is None, "zawieszona nie jest klikalna"
+    assert track_at(infos, 20, 20) is None, "a suspended one is not clickable"
     assert track_at(infos, 900, 500) is None
 
 
@@ -184,7 +184,7 @@ def test_track_infos_mark_visibility() -> None:
     seen = track_infos(feed(pt, 0.05, (400, 100, RED)))[0]
     assert seen.visible and seen.box == (350, 100, 100, 300)
     hidden = track_infos(feed(pt, 0.1, protect=tid, protect_s=6.0))
-    assert hidden == (TrackInfo(tid, seen.box, seen.head, False),), "zawieszona pamięta ostatnią ramkę"
+    assert hidden == (TrackInfo(tid, seen.box, seen.head, False),), "a suspended one remembers the last box"
 
 
 class _T:
@@ -197,10 +197,10 @@ def test_selection_lifecycle() -> None:
     assert sel.state == AUTO and sel.resolve([_T(1, True)], 0.0) is None
     sel.select(1, 0.0)
     assert sel.resolve([_T(1, True)], 0.1).id == 1 and sel.state == SELECTED
-    assert sel.resolve([_T(1, False)], 0.3) is None and sel.state == SELECTED, "krótka luka"
+    assert sel.resolve([_T(1, False)], 0.3) is None and sel.state == SELECTED, "a short gap"
     assert sel.resolve([_T(1, False)], 1.0) is None and sel.state == SUSPENDED
     assert abs(sel.remaining(1.0) - 5.1) < 1e-6
-    assert sel.resolve([_T(1, True)], 3.0).id == 1 and sel.state == SELECTED, "powrót"
+    assert sel.resolve([_T(1, True)], 3.0).id == 1 and sel.state == SELECTED, "return"
 
 
 def test_selection_expires_to_auto() -> None:
@@ -226,4 +226,4 @@ def test_selection_state_values_are_english_codes() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Tożsamość osób")
+    run(globals(), "Person identity")

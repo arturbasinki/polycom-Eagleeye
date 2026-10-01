@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rdzeń: skala głowy w kątach świata, pomiary wstrzymane w trakcie jazdy zoomu.
+"""Core: head scale in world angles, measurements paused while the zoom moves.
 
     .venv/bin/python tests/test_core.py
 """
@@ -43,7 +43,7 @@ def test_head_scale_enters_filter_in_world_units() -> None:
 
 def test_frames_during_zoom_motion_are_skipped() -> None:
     c = core()
-    c.actuator.apply([Command("zoom", "zoom", 2400)], 0.0)     # jedzie do 0.1 + 0.3 + 1.2 = 1.6 s
+    c.actuator.apply([Command("zoom", "zoom", 2400)], 0.0)     # travels to 0.1 + 0.3 + 1.2 = 1.6 s
     c.step(0.5, obs(0.5), W, H)
     assert c.last_world is None
     c.step(3.0, obs(3.0), W, H)
@@ -54,9 +54,9 @@ def test_target_is_held_while_zoom_moves() -> None:
     c = core()
     c.step(0.0, obs(0.0), W, H)
     c.actuator.apply([Command("zoom", "zoom", 2400)], 0.1)
-    c.step(1.0, None, W, H)                 # 1 s bez pomiaru > lost_after (0.4 s)
+    c.step(1.0, None, W, H)                 # 1 s without a measurement > lost_after (0.4 s)
     assert c.last_estimate is not None and c.director.status.mode != LOST
 
 
 if __name__ == "__main__":
-    run(globals(), "Rdzeń śledzenia")
+    run(globals(), "Tracking core")

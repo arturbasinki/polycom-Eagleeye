@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Wątek trackera: bezpieczeństwo ruchu, przełączanie detektora, sterowanie ręczne.
+"""Tracker thread: motion safety, detector switching, manual control.
 
-Bez sprzętu: atrapa strumienia (prawdziwe bajty JPEG), atrapa kontrolek,
-atrapa percepcji.
+Without hardware: a stream double (real JPEG bytes), a controls double,
+a perception double.
 
     .venv/bin/python tests/test_tracker.py
 """
@@ -59,7 +59,7 @@ class Broken:
     description = "zepsuty"
 
     def observe(self, frame, t, previous):
-        raise RuntimeError("CUDA padła")
+        raise RuntimeError("CUDA crashed")
 
 
 def make(stream=None, controls=None, factory=lambda gpu: NoPerson(), **settings):
@@ -87,10 +87,10 @@ def test_no_frames_stops_motion() -> None:
     tr.start()
     try:
         tr.set_enabled(True)
-        tr.core.actuator.watchdog_s = 10.0          # wyłączamy strażnika - sprawdzamy pętlę
+        tr.core.actuator.watchdog_s = 10.0          # we disable the watchdog - we are checking the loop
         tr.core.actuator.velocity("pan", 1, time.monotonic())
         time.sleep(1.4)
-        speeds = ctl.writes_to(CID_PAN_SPEED)       # przed stop(), który też zeruje prędkość
+        speeds = ctl.writes_to(CID_PAN_SPEED)       # before stop(), which also zeroes the velocity
     finally:
         tr.stop()
     assert tr.state.message.key == "tracker.no_frames"
@@ -167,24 +167,24 @@ def test_unexpected_error_stops_motion_and_keeps_thread_alive() -> None:
     tr.start()
     try:
         tr.set_enabled(True)
-        tr.core.actuator.watchdog_s = 10.0           # zatrzymać ma pętla, nie strażnik
+        tr.core.actuator.watchdog_s = 10.0           # the loop is supposed to stop it, not the watchdog
         tr.core.actuator.velocity("pan", 1, time.monotonic())
 
         def boom(*args, **kwargs):
-            raise ZeroDivisionError("błąd w reżyserze")
+            raise ZeroDivisionError("error in the director")
         tr.core.step = boom
         time.sleep(0.5)
         speeds = ctl.writes_to(CID_PAN_SPEED)
         alive = tr._thread is not None and tr._thread.is_alive()
     finally:
         tr.stop()
-    assert speeds[-1] == 0, "ruch musi zostać zatrzymany"
+    assert speeds[-1] == 0, "the motion must be stopped"
     assert not tr.enabled and tr.state.message.key == "tracker.failed"
-    assert alive, "wątek musi przeżyć, żeby śledzenie dało się włączyć ponownie"
+    assert alive, "the thread must survive so that tracking can be enabled again"
 
 
 def test_recording_can_be_switched_on_while_tracking() -> None:
-    """Zgłoszone: przełącznik "zapisuj sesję" działał dopiero po ponownym połączeniu."""
+    """Reported: the "record session" switch worked only after reconnecting."""
     directory = Path(tempfile.mkdtemp())
     tr = make()
     tr.set_enabled(True)
@@ -222,7 +222,7 @@ def test_manual_zoom_while_tracking_turns_auto_zoom_off() -> None:
     tr.start()
     try:
         tr.set_enabled(True)
-        ctl.values[CID_ZOOM_ABSOLUTE] = 3000       # ktoś przekręcił pierścień zoomu
+        ctl.values[CID_ZOOM_ABSOLUTE] = 3000       # someone turned the zoom ring
         deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline:
             if tr.core.director.auto_zoom is False and tr.settings.auto_zoom is False:
@@ -273,11 +273,11 @@ def _two_people_tracker(**settings):
 def test_click_selects_one_of_two_people_and_clear_returns_to_auto() -> None:
     tr, fake = _two_people_tracker()
     try:
-        assert tr.state.target.box == fake.left.as_box(), "AUTO: największa osoba"
+        assert tr.state.target.box == fake.left.as_box(), "AUTO: the biggest person"
         assert tr.select_at(220, 80) is True
         assert _wait_until(lambda: tr.state.selection == "selected" and tr.state.target is not None
                            and tr.state.target.box == fake.right.as_box())
-        assert tr.select_at(5, 5) is False and tr.state.selection == "selected", "puste miejsce nic nie zmienia"
+        assert tr.select_at(5, 5) is False and tr.state.selection == "selected", "an empty spot changes nothing"
         tr.clear_selection()
         assert _wait_until(lambda: tr.state.selection == "auto" and tr.state.target is not None
                            and tr.state.target.box == fake.left.as_box())
@@ -291,9 +291,9 @@ def test_selected_person_leaving_suspends_then_expires_to_auto() -> None:
     try:
         assert tr.select_at(220, 80)
         assert _wait_until(lambda: tr.state.selection == "selected")
-        fake.dets = [fake.left]                          # wybrana wychodzi z kadru
+        fake.dets = [fake.left]                          # the selected person leaves the frame
         assert _wait_until(lambda: tr.state.selection == "suspended")
-        assert tr.state.target is None, "kamera stoi, nie przechodzi na drugą osobę"
+        assert tr.state.target is None, "the camera stays put, it does not switch to the other person"
         assert _wait_until(lambda: tr.state.selection == "auto", timeout=4.0)
         assert tr.state.selection_note == msg("identity.selection_lost")
         assert _wait_until(lambda: tr.state.target is not None and tr.state.target.box == fake.left.as_box())
@@ -308,7 +308,7 @@ def test_selected_person_returning_is_tracked_again() -> None:
         assert _wait_until(lambda: tr.state.selection == "selected")
         fake.dets = [fake.left]
         assert _wait_until(lambda: tr.state.selection == "suspended")
-        fake.dets = [fake.left, fake.right]              # wraca w to samo miejsce
+        fake.dets = [fake.left, fake.right]              # returns to the same spot
         assert _wait_until(lambda: tr.state.selection == "selected" and tr.state.target is not None
                            and tr.state.target.box == fake.right.as_box())
     finally:
@@ -334,7 +334,7 @@ def test_identity_error_returns_to_auto_and_keeps_running() -> None:
     try:
         assert tr.select_at(220, 80)
         assert _wait_until(lambda: tr.state.selection == "selected")
-        fake.fail_observation = True                     # numeracja rzuca przy wybranej osobie
+        fake.fail_observation = True                     # numbering raises on the selected person
         assert _wait_until(lambda: tr.state.selection == "auto"
                            and tr.state.selection_note == msg("tracker.identity_error"))
         assert tr.enabled and tr.state.enabled
@@ -343,8 +343,9 @@ def test_identity_error_returns_to_auto_and_keeps_running() -> None:
 
 
 def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
-    """W trakcie jazdy zoomu pole widzenia z kontrolki nie jest prawdziwe (jak w core.step):
-    numeracja nie przelicza wtedy położeń ani rozmiarów, a wybór nie oddaje celu obcemu."""
+    """While the zoom is moving, the field of view from the control is not real (as in core.step):
+    numbering does not rescale positions or sizes then, and the selection does not hand the
+    target to a stranger."""
     tr, fake = _two_people_tracker()
     try:
         assert tr.select_at(220, 80)
@@ -353,12 +354,12 @@ def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
         time.sleep(0.2)
         fake.dets = [fake.left, fake.right, Detection(120, 30, 40, 120, 0.9, "poza")]
         time.sleep(0.4)
-        assert len(tr.state.tracks) == 2, "trzecia osoba nie dostaje numeru w trakcie jazdy zoomu"
+        assert len(tr.state.tracks) == 2, "the third person gets no number while the zoom is moving"
         assert tr.state.target is None or tr.state.target.box == fake.right.as_box()
-        del tr.core.actuator.zoom_model.moving          # koniec jazdy: znów liczymy
+        del tr.core.actuator.zoom_model.moving          # end of the move: we count again
         assert _wait_until(lambda: len(tr.state.tracks) == 3)
     finally:
         tr.stop()
 
 if __name__ == "__main__":
-    run(globals(), "Wątek trackera")
+    run(globals(), "Tracker thread")

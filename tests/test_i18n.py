@@ -41,14 +41,14 @@ def catalogs(**by_language: dict):
 
 
 EN = {"_name": "English", "hello": "hello {name}", "only_en": "only english", "plain": "plain"}
-PL = {"_name": "Polski", "hello": "cześć {name}", "plain": "zwykły"}
+PL = {"_name": "Polski", "hello": "cześć {name}", "plain": "zwykły"}    # polish: deliberate
 
 
 def test_translates_in_the_selected_language() -> None:
     with catalogs(en=EN, pl=PL):
         assert t("hello", name="Ala") == "hello Ala"
         i18n.set_language("pl")
-        assert t("hello", name="Ala") == "cześć Ala"
+        assert t("hello", name="Ala") == "cześć Ala"    # polish: deliberate
         assert translate("en", "plain") == "plain"
 
 
@@ -87,7 +87,7 @@ def test_broken_catalog_text_never_raises() -> None:
 
 def test_params_may_contain_braces_and_unicode() -> None:
     with catalogs(en={"_name": "English", "err": "error: {error}"}):
-        assert t("err", error="{x} zażółć gęślą") == "error: {x} zażółć gęślą"
+        assert t("err", error="{x} zażółć gęślą") == "error: {x} zażółć gęślą"    # polish: deliberate
 
 
 def test_detect_language_from_environment_forms() -> None:
@@ -122,17 +122,17 @@ def test_available_languages_reads_native_names() -> None:
 
 
 def test_message_round_trips_through_json() -> None:
-    m = msg("hello", name="{ł} 'x'")
+    m = msg("hello", name="{ł} 'x'")    # polish: deliberate
     wire = json.dumps(m.to_dict(), ensure_ascii=False)
     back = Message.from_dict(json.loads(wire))
-    assert back == m and back.params == {"name": "{ł} 'x'"}
+    assert back == m and back.params == {"name": "{ł} 'x'"}    # polish: deliberate
 
 
 def test_message_text_uses_active_or_explicit_language() -> None:
     with catalogs(en=EN, pl=PL):
         m = msg("hello", name="Ala")
         i18n.set_language("pl")
-        assert m.text() == "cześć Ala"
+        assert m.text() == "cześć Ala"    # polish: deliberate
         assert m.text("en") == "hello Ala"
 
 
@@ -161,7 +161,7 @@ def test_cli_prints_one_translated_line() -> None:
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             assert i18n.main(["--lang", "pl", "hello", "name=Jan"]) == 0
-        assert out.getvalue() == "cześć Jan\n"
+        assert out.getvalue() == "cześć Jan\n"    # polish: deliberate
 
 
 def test_real_catalogs_exist_and_name_themselves() -> None:

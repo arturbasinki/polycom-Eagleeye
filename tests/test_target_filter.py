@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filtr celu: Kalman w kątach świata, bramkowanie skoków, utrata celu.
+"""Target filter: Kalman in world angles, jump gating, target loss.
 
     .venv/bin/python tests/test_target_filter.py
 """
@@ -21,8 +21,8 @@ DT = 1 / 15
 
 
 def test_stationary_noisy_target_converges() -> None:
-    # Szum 2× zmierzonego (0,04° - MLE z nagrań, 2026-09-26). Prędkość w spoczynku musi
-    # zostać poniżej progu osiadania reżysera (director.SETTLE_SPEED = 2°/s).
+    # Noise 2× the measured one (0.04° - MLE from recordings, 2026-09-26). The velocity at rest
+    # must stay below the director's settle threshold (director.SETTLE_SPEED = 2°/s).
     rng = random.Random(1)
     f = TargetFilter()
     for i in range(60):
@@ -42,8 +42,8 @@ def test_walking_target_velocity_is_estimated() -> None:
 
 
 def test_prediction_extrapolates_with_velocity_but_only_briefly() -> None:
-    """Krótko przewidujemy ruch, ale nie ciągniemy starej prędkości przez luki w detekcji -
-    to wypychało estymatę 5-7° za zatrzymaną osobę (sesja 20260923-003153)."""
+    """We predict motion briefly, but we do not drag the old velocity through detection gaps -
+    that pushed the estimate 5-7° past a stopped person (session 20260923-003153)."""
     s = FilterSettings()
     f = TargetFilter(s)
     for i in range(45):
@@ -67,7 +67,7 @@ def test_single_detector_jump_is_rejected() -> None:
     f = TargetFilter()
     for i in range(30):
         f.update(i * DT, 0.0, 0.0)
-    accepted = f.update(30 * DT, 49000.0, 0.0)       # ~240 px przy 204"/px
+    accepted = f.update(30 * DT, 49000.0, 0.0)       # ~240 px at 204"/px
     assert not accepted
     assert abs(f.estimate(30 * DT).pan) < 1000
 
@@ -98,8 +98,8 @@ def test_reset_forgets_target() -> None:
 
 
 def test_measurement_during_camera_motion_counts_less() -> None:
-    # Klatka z jazdy kamery: kąt świata = model głowicy + piksele, a model i chwila
-    # naświetlenia są niepewne - pomiar ma wariancję ~ (prędkość kamery × timing_sigma)².
+    # A frame from a camera move: world angle = head model + pixels, and the model and exposure
+    # instant are uncertain - the measurement has variance ~ (camera speed × timing_sigma)².
     a, b = TargetFilter(), TargetFilter()
     for i in range(30):
         a.update(i * DT, 0.0, 0.0)
@@ -112,8 +112,8 @@ def test_measurement_during_camera_motion_counts_less() -> None:
 
 
 def test_moving_camera_widens_gate() -> None:
-    # 3° odchyłki w bezruchu to skok detektora (odrzucony); w jeździe 60°/s mieści się w
-    # niepewności pomiaru i jest przyjmowany (ze słabą wagą).
+    # A 3° deviation at rest is a detector jump (rejected); at 60°/s it fits within the
+    # measurement uncertainty and is accepted (with a low weight).
     a, b = TargetFilter(), TargetFilter()
     for i in range(30):
         a.update(i * DT, 0.0, 0.0)
@@ -148,4 +148,4 @@ def test_rejected_measurement_does_not_touch_yaw() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Filtr celu")
+    run(globals(), "Target filter")

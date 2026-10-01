@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Polecenie eagleeye: sterowanie działającą aplikacją i jedna instancja.
+"""The eagleeye command: controlling a running app and a single instance.
 
     .venv/bin/python tests/test_cli.py
 """
@@ -83,4 +83,4 @@ def test_failed_command_returns_1_and_notifies() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Polecenie eagleeye")
+    run(globals(), "The eagleeye command")

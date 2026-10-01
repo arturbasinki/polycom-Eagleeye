@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ikona w zasobniku: logika menu (bez GTK) i proces potomny.
+"""Tray icon: menu logic (without GTK) and the child process.
 
     .venv/bin/python tests/test_tray.py
 """
@@ -21,7 +21,7 @@ from eagleeye.trayproc import TrayProcess  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("eagleeye_tray", ROOT / "tray" / "eagleeye_tray.py")
 tray = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(tray)          # gi importuje dopiero main() - tu wystarczy venv
+spec.loader.exec_module(tray)          # gi is imported only by main() - the venv is enough here
 
 
 def test_icon_follows_privacy() -> None:
@@ -40,8 +40,8 @@ def test_tooltip_describes_state_in_both_languages() -> None:
         assert "not connected" in tray.tooltip({"camera": False})
         i18n.set_language("pl")
         text = tray.tooltip(state)
-        assert "śledzenie włączone" in text and "rozmowa" in text
-        assert "prywatność" in tray.tooltip({"privacy": True})
+        assert "śledzenie włączone" in text and "rozmowa" in text    # polish: deliberate
+        assert "prywatność" in tray.tooltip({"privacy": True})    # polish: deliberate
     finally:
         i18n.set_language("en")
 
@@ -55,7 +55,7 @@ def test_menu_labels_follow_the_language() -> None:
         i18n.set_language("en")
         assert tray.labels()["quit"] == "Quit"
         i18n.set_language("pl")
-        assert tray.labels()["quit"] == "Zakończ"
+        assert tray.labels()["quit"] == "Zakończ"    # polish: deliberate
     finally:
         i18n.set_language("en")
 
@@ -81,4 +81,4 @@ def test_missing_interpreter_is_not_fatal() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Ikona w zasobniku")
+    run(globals(), "Tray icon")

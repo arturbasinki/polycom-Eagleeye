@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Silnik: kamera, polecenia, prywatność, stan - bez sprzętu i bez okna.
+"""Engine: camera, commands, privacy, state - without hardware and without a window.
 
     .venv/bin/python tests/test_engine.py
 """
@@ -110,7 +110,7 @@ def test_busy_camera_names_holder_and_reconnects_by_itself() -> None:
         assert state["camera"] is False
         text = render(state["error"])
         assert "chrome" in text and "EagleEye" in text
-        busy[0] = False                          # w Meet wybrano kamerę EagleEye - Chrome zwolnił urządzenie
+        busy[0] = False                          # in Meet the EagleEye camera was chosen - Chrome released the device
         deadline = time.monotonic() + 2.0
         while (engine.tracker is None or engine.error) and time.monotonic() < deadline:
             time.sleep(0.02)
@@ -129,7 +129,7 @@ def test_other_open_errors_do_not_retry() -> None:
     engine.start()
     try:
         time.sleep(0.2)
-        assert len(calls) == 1                   # zły wybór urządzenia - nie ponawiamy w kółko
+        assert len(calls) == 1                   # a wrong device choice - we do not retry in a loop
     finally:
         engine.shutdown()
 
@@ -149,7 +149,7 @@ def test_privacy_command_shows_card_and_parks_head() -> None:
 
 def test_privacy_without_camera_still_shows_card() -> None:
     def broken(device):
-        raise OSError(2, "brak")
+        raise OSError(2, "missing")
     engine, _ = make_engine(controls_factory=broken)
     engine.start()
     try:
@@ -167,8 +167,8 @@ def test_shutdown_during_privacy_returns_head_without_tracking() -> None:
     engine.command("privacy", "on")
     tracker = engine.tracker
     engine.shutdown(park_wait=0.0)
-    assert ctl.writes_to(CID_TILT_ABSOLUTE)[-1] == 50000      # obiektyw wraca z pozycji "w dół"
-    assert not tracker.enabled                                 # bez wznawiania śledzenia przy wyjściu
+    assert ctl.writes_to(CID_TILT_ABSOLUTE)[-1] == 50000      # the lens returns from the "down" position
+    assert not tracker.enabled                                 # without resuming tracking on exit
 
 
 def test_tracking_is_blocked_during_privacy() -> None:
@@ -341,21 +341,21 @@ def test_state_is_json_and_independent_of_the_language() -> None:
 
 def test_errors_are_messages_and_survive_odd_characters() -> None:
     def broken(device):
-        raise OSError(errno.EACCES, "brak dostępu {x} ł")
+        raise OSError(errno.EACCES, "brak dostępu {x} ł")    # polish: deliberate
     engine, _ = make_engine(controls_factory=broken)
     engine.start()
     try:
         assert engine.error.key == "engine.error.open_failed"
         wire = json.dumps(engine.state(), ensure_ascii=False)
-        assert "brak dostępu {x} ł" in wire
-        assert "brak dostępu {x} ł" in engine.error.text("pl")     # braces in a parameter must not break formatting
+        assert "brak dostępu {x} ł" in wire    # polish: deliberate
+        assert "brak dostępu {x} ł" in engine.error.text("pl")     # braces in a parameter must not break formatting; polish: deliberate
     finally:
         engine.shutdown()
 
 
 def test_legacy_profile_value_falls_back_to_the_default() -> None:
     path = Path(tempfile.mkdtemp()) / "config.json"
-    path.write_text(json.dumps({"settings": {"tracking": {"profile": "rozmowa"}}, "presets": []}),
+    path.write_text(json.dumps({"settings": {"tracking": {"profile": "rozmowa"}}, "presets": []}),    # polish: deliberate
                     encoding="utf-8")
     engine = Engine(Store(path), stream_factory=FakeCameraStream,
                     controls_factory=lambda device: FakeControls(),
@@ -391,4 +391,4 @@ def test_command_errors_carry_a_message() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Silnik")
+    run(globals(), "Engine")

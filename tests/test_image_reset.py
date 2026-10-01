@@ -1,7 +1,7 @@
-"""Przycisk „domyślne” w karcie Obraz: wszystkie kontrolki obrazu wracają do wartości fabrycznych.
+"""The "defaults" button in the Image card: every image control returns to its factory value.
 
-Pułapka: zapis temperatury balansu bieli wyłącza balans auto (``AUTO_DEPENDENCIES``),
-więc reset, który ustawia temperaturę, musi potem przywrócić sam tryb auto.
+Trap: writing the white-balance temperature disables auto balance (``AUTO_DEPENDENCIES``),
+so a reset that sets the temperature must then restore auto mode itself.
 """
 
 import sys
@@ -16,7 +16,7 @@ from eagleeye.v4l2 import (CID_BACKLIGHT_COMP, CID_BRIGHTNESS, CID_GAMMA, CID_WH
 
 
 class FakeControls:
-    """Kamera z kontrolkami obrazu; temperatura bieli jest zablokowana, gdy auto działa."""
+    """Camera with image controls; the white-balance temperature is locked while auto is on."""
 
     def __init__(self) -> None:
         self.defaults = {CID_BRIGHTNESS: 5, CID_GAMMA: 222, CID_BACKLIGHT_COMP: 1,
@@ -53,9 +53,9 @@ def test_reset_restores_every_image_control_including_auto_white_balance():
     make_app(controls)._on_reset_image(None)
     wrong = {hex(c): (v, controls.defaults[c]) for c, v in controls.values.items()
              if v != controls.defaults[c]}
-    assert not wrong, f"(jest, fabrycznie): {wrong}"
+    assert not wrong, f"(is, factory): {wrong}"
 
 
 if __name__ == "__main__":
     from runner import run
-    run(globals(), "Reset kontrolek obrazu")
+    run(globals(), "Image control reset")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instalator: składnia, tryb --dry-run (nic nie zmienia), shellcheck, gdy jest.
+"""Installer: syntax, --dry-run mode (changes nothing), shellcheck when present.
 
     .venv/bin/python tests/test_install.py
 """
@@ -33,7 +33,7 @@ def test_scripts_have_valid_bash_syntax() -> None:
 
 def test_shellcheck_when_available() -> None:
     if shutil.which("shellcheck") is None:
-        print("    POMINIĘTY: brak shellcheck")
+        print("    SKIPPED: no shellcheck")
         return
     res = subprocess.run(["shellcheck", *map(str, SCRIPTS)], capture_output=True, text=True)
     assert res.returncode == 0, res.stdout
@@ -82,4 +82,4 @@ def test_scripts_use_the_english_names() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Instalator")
+    run(globals(), "Installer")

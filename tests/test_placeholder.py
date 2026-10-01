@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zaślepka wirtualnej kamery: pisze planszę, gdy aplikacja nie działa, i oddaje urządzenie.
+"""Virtual camera placeholder: writes a slate when the app is not running and releases the device.
 
     .venv/bin/python tests/test_placeholder.py
 """
@@ -54,7 +54,7 @@ def test_releases_device_when_app_starts_and_takes_it_back_after() -> None:
     p.tick()
     state["app"] = True
     assert p.tick() == "app"
-    assert state["devices"][0].closed                  # urządzenie wolne dla aplikacji
+    assert state["devices"][0].closed                  # device free for the app
     state["app"] = False
     assert p.tick() == "writing"
     assert len(state["devices"]) == 2 and state["devices"][1].writes
@@ -70,7 +70,7 @@ def test_device_busy_or_missing_is_retried_without_crash() -> None:
 
     def busy():
         calls.append(1)
-        raise V4L2Error("S_FMT wyjścia: Invalid argument")   # inny pisarz trzyma urządzenie
+        raise V4L2Error("S_FMT output: Invalid argument")   # another writer holds the device
     p, _ = make(factory=busy)
     assert p.tick() == "no_device" and p.tick() == "no_device" and len(calls) == 2
     p, _ = make(factory=lambda: None)
@@ -100,4 +100,4 @@ def test_card_is_rerendered_when_the_language_changes() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Zaślepka wirtualnej kamery")
+    run(globals(), "Virtual camera placeholder")

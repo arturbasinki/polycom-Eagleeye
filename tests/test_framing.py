@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kompozycja: złoty podział, strona zależna od kierunku twarzy, zoom z planu.
+"""Composition: golden ratio, side from face direction, zoom from the shot.
 
     .venv/bin/python tests/test_framing.py
 """
@@ -29,14 +29,14 @@ def e(pan: float = 0.0, tilt: float = 0.0, yaw=None, scale=None) -> TargetEstima
 
 
 def feed(sel: SideSelector, yaw_fn, t0: float, t1: float) -> str:
-    """Kroki co 0,1 s od t0 do t1 (bez t1); czas liczony z liczb całkowitych - bez dryfu."""
+    """Steps every 0.1 s from t0 to t1 (excluding t1); time counted from integers - no drift."""
     for i in range(round(t0 * 10), round(t1 * 10)):
         t = i / 10
         sel.update(t, yaw_fn(t), **P)
     return sel.side
 
 
-# --- punkt docelowy -----------------------------------------------------------
+# --- aim point -----------------------------------------------------------
 
 def test_center_side_keeps_face_centered_on_golden_line() -> None:
     pan, tilt = aim(e(deg(10), deg(5)), CENTER, VIEW)
@@ -64,7 +64,7 @@ def test_aim_uses_field_of_view_of_given_zoom() -> None:
     assert abs(x - GOLDEN * 1280) < 1e-6
 
 
-# --- zoom z planu -------------------------------------------------------------
+# --- zoom from the shot -------------------------------------------------------------
 
 def test_zoom_goal_fills_frame_by_shot() -> None:
     scale = deg(4)
@@ -73,8 +73,8 @@ def test_zoom_goal_fills_frame_by_shot() -> None:
 
 
 def test_zoom_goal_is_clamped_and_needs_scale() -> None:
-    assert zoom_goal(e(scale=deg(30)), MCU, VIEW) == 0.0, "za blisko - najszerzej"
-    assert zoom_goal(e(scale=deg(0.5)), MCU, VIEW) == AUTO_ZOOM_MAX, "za daleko - limit"
+    assert zoom_goal(e(scale=deg(30)), MCU, VIEW) == 0.0, "too close - widest"
+    assert zoom_goal(e(scale=deg(0.5)), MCU, VIEW) == AUTO_ZOOM_MAX, "too far - limit"
     assert zoom_goal(e(scale=None), MCU, VIEW) is None
 
 
@@ -84,7 +84,7 @@ def test_zoom_goal_does_not_depend_on_current_zoom() -> None:
     assert abs(a - b) < 1e-6
 
 
-# --- strona -------------------------------------------------------------------
+# --- side -------------------------------------------------------------------
 
 def test_sustained_turn_right_moves_face_to_left_point() -> None:
     s = SideSelector()
@@ -110,14 +110,14 @@ def test_yaw_flicker_across_enter_threshold_keeps_center() -> None:
 def test_hysteresis_between_thresholds_keeps_side() -> None:
     s = SideSelector()
     feed(s, lambda t: 0.6, 0.0, 1.7)
-    assert feed(s, lambda t: 0.27, 1.7, 7.0) == LEFT, "0,20 < |yaw| < 0,35 - bez zmiany"
+    assert feed(s, lambda t: 0.27, 1.7, 7.0) == LEFT, "0.20 < |yaw| < 0.35 - no change"
     assert feed(s, lambda t: 0.10, 7.0, 8.7) == CENTER
 
 
 def test_left_to_right_switches_directly() -> None:
-    # Zgłoszone 2026-09-26: przejście lewy -> prawy przez środek dawało dwa ruchy kamery
-    # (najpierw na środek, potem na drugi punkt). Przed obejrzeniem się przez ramię chroni
-    # zwłoka side_dwell, nie postój na środku.
+    # Reported 2026-09-26: a left -> right transition through the center gave two camera moves
+    # (first to the center, then to the other point). A look over the shoulder is guarded against
+    # by the side_dwell dwell, not by a stop at the center.
     s = SideSelector()
     feed(s, lambda t: 0.6, 0.0, 1.7)
     sides = []
@@ -130,10 +130,10 @@ def test_left_to_right_switches_directly() -> None:
 
 
 def test_head_turn_sweeping_through_frontal_goes_straight_to_other_side() -> None:
-    # Obrót głowy z lewa na prawo przechodzi przez twarz na wprost (yaw ~ 0) - chwilowo.
+    # A head turn from left to right passes through a face-on pose (yaw ~ 0) - briefly.
     s = SideSelector()
     feed(s, lambda t: 0.6, 0.0, 1.7)
-    yaw = lambda t: 0.6 - 1.2 * min(max((t - 1.7) / 0.5, 0.0), 1.0)   # +0,6 -> -0,6 w 0,5 s
+    yaw = lambda t: 0.6 - 1.2 * min(max((t - 1.7) / 0.5, 0.0), 1.0)   # +0.6 -> -0.6 in 0.5 s
     sides = []
     t = 1.7
     while t < 4.0:
@@ -180,4 +180,4 @@ def test_side_values_are_english_codes() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Kompozycja kadru")
+    run(globals(), "Frame composition")

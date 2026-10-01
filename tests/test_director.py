@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Reżyser: histereza, zwłoka, kadrowanie, wyprzedzenie, podążanie.
+"""Director: hysteresis, dwell, framing, lead, following.
 
-Zamiast sprzętu: prawdziwy HeadModel, do którego od razu stosujemy rozkazy.
+Instead of hardware: a real HeadModel to which we apply the commands right away.
 
     .venv/bin/python tests/test_director.py
 """
@@ -29,8 +29,8 @@ DT = 1 / 15
 
 
 def framed_tilt(_profile=None, cam_tilt: float = 0.0) -> float:
-    """Kąt świata głowy, która przy danym tilcie kamery jest dokładnie na linii złotego podziału
-    (wspólnej dla profili - parametr profilu zostaje dla zgodności wywołań)."""
+    """World angle of a head that, at the given camera tilt, lies exactly on the golden-ratio line
+    (shared by the profiles - the profile parameter stays for call compatibility)."""
     return cam_tilt + (0.5 - GOLDEN) * VIEW.vfov
 
 
@@ -48,7 +48,7 @@ def apply(head: HeadModel, cmds, t: float) -> None:
 
 
 def simulate(director: Director, head: HeadModel, seconds: float, est_fn, t0: float = 0.0):
-    """Pętla reżysera; ``est_fn(t, head)`` zwraca estymatę albo None. Zwraca [(t, Command)]."""
+    """Director loop; ``est_fn(t, head)`` returns an estimate or None. Returns [(t, Command)]."""
     log = []
     n = int(seconds / DT)
     for i in range(n):
@@ -76,8 +76,8 @@ def test_sustained_offset_moves_once_exactly_to_aim() -> None:
 
 
 def test_tilt_frames_head_on_golden_line() -> None:
-    # Głowa startuje poza strefą wyzwalania (odchylenie 0,182 vfov > 0,12 vfov) - test
-    # sprawdza dokładność dojazdu na linię złotego podziału jednym ruchem.
+    # The head starts outside the trigger zone (deviation 0.182 vfov > 0.12 vfov) - the test
+    # checks the accuracy of arriving on the golden-ratio line in one move.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 3.0, lambda t, _: est(0.0, 0.3 * VIEW.vfov, t))
     tilts = [c for _, c in log if c.axis == "tilt"]
@@ -86,10 +86,10 @@ def test_tilt_frames_head_on_golden_line() -> None:
 
 
 def test_tilt_frames_head_from_within_old_zone() -> None:
-    # Kalibracja (2026-09-25): głowa 3° poniżej linii złotego podziału leżała w strefie
-    # 0,12 vfov (≈4,9°), więc kamera nigdy nie ustawiała jej na linii (pierwszy rozkaz
-    # tiltu w całej sesji po 92 s). Dziś naprawia to pasmo kompozycji (5%) i cichy re-fit -
-    # jednym ruchem, dokładnie na linię (a nie strefa zmniejszona do 2°, która goniła kiwnięcia).
+    # Calibration (2026-09-25): a head 3° below the golden-ratio line lay within the 0.12 vfov
+    # zone (≈4.9°), so the camera never put it on the line (the first tilt command in the whole
+    # session after 92 s). Today the composition band (5%) and a quiet re-fit fix this -
+    # in one move, exactly onto the line (and not a zone shrunk to 2°, which chased nods).
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 6.0, lambda t, _: est(0.0, framed_tilt(TALK) - deg(3), t))
     tilts = [c for _, c in log if c.axis == "tilt"]
@@ -98,9 +98,9 @@ def test_tilt_frames_head_from_within_old_zone() -> None:
 
 
 def test_rest_off_point_reframes_after_refit_dwell() -> None:
-    # Odbiór 2026-09-25: użytkownik przeniósł fotel - głowa osiadła 10% szerokości od
-    # punktu złotego podziału (w strefie wyzwalania 15%); sama strefa zostawiałaby kadr
-    # w tym stanie na stałe (kryterium 1: błąd ≤ 5%). Cichy re-fit po REFIT_DWELL.
+    # Acceptance 2026-09-25: the user moved the chair - the head settled 10% of the width from
+    # the golden-ratio point (within the 15% trigger zone); the zone alone would leave the frame
+    # in that state forever (criterion 1: error ≤ 5%). A quiet re-fit after REFIT_DWELL.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     offset = 0.10 * VIEW.hfov
     log = simulate(d, h, 6.0, lambda t, _: est(offset, framed_tilt(TALK), t))
@@ -117,8 +117,8 @@ def test_rest_inside_composition_band_never_moves() -> None:
 
 
 def test_brief_mid_band_excursion_does_not_refit() -> None:
-    # Wycieczka 10% szerokości trwająca 2 s (gest) - za krótka, by liczyć się za nową
-    # pozycję spoczynkową.
+    # A 10%-width excursion lasting 2 s (a gesture) - too short to count as a new
+    # rest position.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 8.0, lambda t, _: est(0.10 * VIEW.hfov if 2.0 <= t < 4.0 else 0.0,
                                                framed_tilt(TALK), t))
@@ -138,8 +138,8 @@ def test_turning_head_moves_face_to_opposite_golden_point() -> None:
 
 
 def test_turning_head_to_other_side_is_one_pan_move() -> None:
-    # Zgłoszone 2026-09-26: nos w lewo -> nos w prawo przechodziło przez punkt środkowy
-    # (dwa ruchy). Ma być jeden ruch, wprost na przeciwny punkt złotego podziału.
+    # Reported 2026-09-26: nose to the left -> nose to the right went through the center point
+    # (two moves). It should be one move, straight to the opposite golden-ratio point.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt()
     yaw = lambda t: 0.6 if t < 6.0 else -0.6
@@ -184,13 +184,13 @@ def test_lead_in_presentation_moves_past_aim() -> None:
 
 
 def test_presentation_lead_is_bounded() -> None:
-    # Sesja 20260926-150210: szybki podjazd fotelem blisko kamery - głowa przy krawędzi,
-    # prędkość kątowa z filtra ~60°/s, a wyprzedzenie v × ~0,5 s dawało rozkazy pan
-    # +110° i -110°. Wyprzedzenie jest dla idącej osoby: prędkość do 25°/s, najwyżej 1/4 kadru.
+    # Session 20260926-150210: a fast chair approach close to the camera - the head at the edge,
+    # the angular velocity from the filter ~60°/s, and the lead v × ~0.5 s gave pan commands
+    # +110° and -110°. The lead is for a walking person: speed up to 25°/s, at most 1/4 of the frame.
     from eagleeye.director import LEAD_MAX_FOV
     d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
     aim = 0.3 * VIEW.hfov
-    # Prędkość w stronę środka kadru - bez podążania, ruch absolutny z wyprzedzeniem.
+    # Velocity toward the center of the frame - no following, an absolute move with lead.
     log = simulate(d, h, 1.0, lambda t, _: est(aim, framed_tilt(), t, v_pan=-deg(60)))
     pans = [c for _, c in log if c.axis == "pan" and c.kind == "abs"]
     assert pans, log
@@ -198,8 +198,8 @@ def test_presentation_lead_is_bounded() -> None:
 
 
 def test_presentation_lead_is_pan_only() -> None:
-    # Pionowa "prędkość" to kiwanie głową, nie chód: wyprzedzenie wystrzeliwało tilt ponad
-    # cel, a drugi ruch wracał (sesja 20260926-011024, t=191,9 s).
+    # The vertical "velocity" is a head nod, not walking: the lead fired the tilt past the
+    # target, and a second move came back (session 20260926-011024, t=191.9 s).
     d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt() + 0.3 * VIEW.vfov
     log = simulate(d, h, 1.0, lambda t, _: est(0.0, tilt, t, v_tilt=deg(6)))
@@ -208,8 +208,8 @@ def test_presentation_lead_is_pan_only() -> None:
 
 
 def test_nod_inside_tilt_zone_does_not_move() -> None:
-    # Kiwnięcie ±2,5° (pionowe gesty w rozmowie) mieści się w strefie tiltu i wraca do pasma
-    # kompozycji, zanim upłynie REFIT_DWELL - kamera stoi.
+    # A ±2.5° nod (vertical gestures in talk mode) fits within the tilt zone and returns to the
+    # composition band before REFIT_DWELL elapses - the camera stands still.
     import math
     for profile in (TALK, PRESENTATION):
         d, h = Director(profile, LIM, DYN), HeadModel(DYN)
@@ -218,9 +218,9 @@ def test_nod_inside_tilt_zone_does_not_move() -> None:
 
 
 def test_pan_waits_for_side_decision_then_moves_once() -> None:
-    # Krok w bok z odwróceniem twarzy: ruch pozycji ruszał przed rozstrzygnięciem strony,
-    # a zmiana strony 1-1,5 s później wymuszała drugi ruch (sesja 20260926-011024, np.
-    # t=1248-1250 s). Pan czeka na decyzję strony i jedzie raz, do punktu nowej strony.
+    # A step aside with the face turning away: the position move started before the side was
+    # decided, and a side change 1-1.5 s later forced a second move (session 20260926-011024, e.g.
+    # t=1248-1250 s). Pan waits for the side decision and travels once, to the new side's point.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt()
     offset = 0.25 * VIEW.hfov
@@ -235,7 +235,7 @@ def test_pan_waits_for_side_decision_then_moves_once() -> None:
 
 
 def test_target_near_edge_does_not_wait_for_side() -> None:
-    # Cel przy krawędzi (idzie) nie czeka na stronę - utrata byłaby gorsza niż dwa ruchy.
+    # A target at the edge (walking) does not wait for the side - a loss would be worse than two moves.
     d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     offset = 0.42 * VIEW.hfov
     log = simulate(d, h, 2.0, lambda t, _: est(offset, framed_tilt(), t, yaw=0.6))
@@ -258,8 +258,8 @@ def test_fast_walker_triggers_follow_then_brake_then_absolute() -> None:
     assert ("vel", 1) in pan
     start = pan.index(("vel", 1))
     stop = pan.index(("vel", 0), start)
-    assert pan[start:stop].count(("vel", 1)) > 1, "podążanie musi odświeżać rozkaz dla strażnika"
-    assert any(k == "abs" for k, _ in pan[stop:]), "po hamowaniu dojazd absolutny"
+    assert pan[start:stop].count(("vel", 1)) > 1, "following must refresh the command for the watchdog"
+    assert any(k == "abs" for k, _ in pan[stop:]), "after braking, an absolute arrival"
 
 
 def test_talk_never_uses_velocity() -> None:
@@ -284,11 +284,11 @@ def test_follow_stops_before_pan_limit() -> None:
     assert max(h.angle("pan", i * 0.05) for i in range(120)) <= LIM.pan_max + deg(0.5)
 
 
-ZOOM_MOVE = 1.0     # s jazdy optyki w teście
+ZOOM_MOVE = 1.0     # s of optics travel in the test
 
 
 def run_zoom(d, h, seconds: float, est_fn, zoom: float = 0.0, t0: float = 0.0):
-    """Jak simulate(), ale widok ma bieżący zoom, a rozkaz zoomu jedzie ZOOM_MOVE s."""
+    """Like simulate(), but the view has the current zoom and the zoom command travels ZOOM_MOVE s."""
     log, zoom_now, until = [], zoom, -1.0
     for i in range(int(seconds / DT)):
         t = t0 + i * DT
@@ -322,18 +322,18 @@ def test_zoom_ignores_small_changes_and_short_lean() -> None:
     z0 = zoom_goal(est(0.0, 0.0, 0.0, scale=deg(4)), Shot("MCU", SHOTS["MCU"]), View(1280, 720))
 
     def fn(t, _):
-        s = deg(4) * (1.1 if int(t) % 2 else 1.0)          # ±10% - w paśmie 20%
+        s = deg(4) * (1.1 if int(t) % 2 else 1.0)          # ±10% - within the 20% band
         if 5.0 <= t < 6.5:
-            s = deg(6)                                      # pochylenie 1,5 s < ZOOM_DWELL
+            s = deg(6)                                      # a 1.5 s lean < ZOOM_DWELL
         return est(0.0, framed_tilt(), t, yaw=0.0, scale=s)
     log, _ = run_zoom(d, h, 12.0, fn, zoom=z0)
     assert [c for _, c in log if c.kind == "zoom"] == []
 
 
 def test_zoom_gap_jitter_does_not_reset_dwell() -> None:
-    # Kalibracja (2026-09-25): krok w tył dawał cel 1,15-1,25x w stosunku do bieżącego
-    # zoomu; każde zanurkowanie pod 1,2 zerowało zwłokę i żaden ruch nie wystartował
-    # (~11 s wariacji, zero rozkazów). Zwłoka resetuje się dopiero pod ZOOM_BAND_RESET.
+    # Calibration (2026-09-25): a step back gave a target 1.15-1.25x relative to the current
+    # zoom; every dip below 1.2 reset the dwell and no move ever started
+    # (~11 s of variation, zero commands). The dwell resets only below ZOOM_BAND_RESET.
     d, h = auto_director()
     base = deg(4)
     z0 = zoom_goal(est(0.0, 0.0, 0.0, scale=base), Shot("MCU", SHOTS["MCU"]), View(1280, 720))
@@ -347,11 +347,11 @@ def test_zoom_gap_jitter_does_not_reset_dwell() -> None:
 
 
 def test_zoom_target_jitter_around_band_does_not_move() -> None:
-    # Odbiór 2026-09-25 (sesja 20260925-235118): w odległości rozmowy cel MCU leżał
-    # przy ~1,1-1,4x, a wahania skali (gesty, obrót głowy) niosły stosunek przez próg
-    # 1,2x - zoom "piła" (13 ruchów w 2 min przy stałej odległości; cel oscylował
-    # 1,16-1,38x, nigdy nie spadając pod reset 1,15x). Ruch startuje tylko, gdy cel
-    # jest stabilny w oknie zwłoki (zmiana < ZOOM_TARGET_STABILITY).
+    # Acceptance 2026-09-25 (session 20260925-235118): at talk distance the MCU target sat
+    # around 1.1-1.4x, and scale variations (gestures, head rotation) carried the ratio across
+    # the 1.2x threshold - zoom "sawtooth" (13 moves in 2 min at a constant distance; the target
+    # oscillated 1.16-1.38x, never dropping below the 1.15x reset). A move starts only when the
+    # target is stable in the dwell window (change < ZOOM_TARGET_STABILITY).
     d, h = auto_director()
     base = deg(4)
     z0 = zoom_goal(est(0.0, 0.0, 0.0, scale=base), Shot("MCU", SHOTS["MCU"]), View(1280, 720))
@@ -364,8 +364,8 @@ def test_zoom_target_jitter_around_band_does_not_move() -> None:
 
 
 def test_zoom_stable_target_still_moves_once() -> None:
-    # To samo co wyżej, ale cel skacze na 1,4x i tam zostaje (np. krok w tył):
-    # bramka stabilności nie może zablokować prawdziwej zmiany planu.
+    # Same as above, but the target jumps to 1.4x and stays there (e.g. a step back):
+    # the stability gate must not block a real shot change.
     d, h = auto_director()
     base = deg(4)
     z0 = zoom_goal(est(0.0, 0.0, 0.0, scale=base), Shot("MCU", SHOTS["MCU"]), View(1280, 720))
@@ -391,7 +391,7 @@ def test_pan_tilt_aim_at_goal_zoom_when_zooming() -> None:
     t_zoom = next(t for t, c in log if c.kind == "zoom")
     same_tick = [c for t, c in log if t == t_zoom and c.kind == "abs"]
     if not ZOOM_WITH_PAN_TILT:
-        assert same_tick == [], "zoom kolejno: pan/tilt dopiero po jeździe optyki"
+        assert same_tick == [], "zoom sequentially: pan/tilt only after the optics move"
         return
     assert {c.axis for c in same_tick} == {"pan", "tilt"}
     pan = next(c.value for c in same_tick if c.axis == "pan")
@@ -401,4 +401,4 @@ def test_pan_tilt_aim_at_goal_zoom_when_zooming() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Reżyser: śledzenie")
+    run(globals(), "Director: tracking")

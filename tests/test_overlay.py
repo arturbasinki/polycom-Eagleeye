@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rysowanie wykryć i strefy na podglądzie.
+"""Drawing detections and the zone on the preview.
 
     .venv/bin/python tests/test_overlay.py
 """
@@ -31,19 +31,19 @@ def test_detections_are_scaled_to_preview_size() -> None:
                          target=Observation(120.0, 70.0, 0.0, 0.9, "twarz", (100, 50, 40, 40)),
                          frame_size=(960, 540), zones=(0.15, 0.12))
     out = annotate(np.zeros((1080, 1920, 3), np.uint8), state)
-    assert out[100:180, 200:280].any(), "ramka wykrycia w skali 2x"
-    assert out[140, 240].any(), "punkt głowy celu"
+    assert out[100:180, 200:280].any(), "detection box at 2x scale"
+    assert out[140, 240].any(), "target head point"
 
 
 def test_head_keypoints_are_drawn() -> None:
     kps = [(0.0, 0.0, 0.0)] * 17
-    kps[0] = (500.0, 300.0, 0.9)          # nos, w skali 2x -> (1000, 600)
-    kps[5] = (520.0, 400.0, 0.9)          # bark - nie rysujemy
+    kps[0] = (500.0, 300.0, 0.9)          # nose, at 2x scale -> (1000, 600)
+    kps[5] = (520.0, 400.0, 0.9)          # shoulder - we do not draw it
     state = TrackerState(enabled=True, frame_size=(960, 540), zones=(0.0, 0.0),
                          detections=(Detection(400, 250, 200, 280, 0.9, "poza", tuple(kps)),))
     out = annotate(np.zeros((1080, 1920, 3), np.uint8), state)
-    assert out[600, 1000].any(), "punkt nosa"
-    assert not out[800, 1040].any(), "barki nie są punktami głowy"
+    assert out[600, 1000].any(), "nose point"
+    assert not out[800, 1040].any(), "shoulders are not head points"
 
 
 def test_disabled_state_draws_nothing() -> None:
@@ -53,15 +53,15 @@ def test_disabled_state_draws_nothing() -> None:
 
 def _state() -> TrackerState:
     kps = [(0.0, 0.0, 0.0)] * 17
-    kps[0] = (500.0, 300.0, 0.9)          # nos
-    kps[5] = (520.0, 400.0, 0.9)          # bark - nie rysujemy
+    kps[0] = (500.0, 300.0, 0.9)          # nose
+    kps[5] = (520.0, 400.0, 0.9)          # shoulder - we do not draw it
     return TrackerState(enabled=True, frame_size=(960, 540), zones=(0.15, 0.12),
                         detections=(Detection(400, 250, 200, 280, 0.9, "poza", tuple(kps)),),
                         target=Observation(500.0, 300.0, 0.0, 0.9, "poza", (400, 250, 200, 280)))
 
 
 def test_shapes_map_to_top_aligned_image() -> None:
-    # okno 1000x1000, obraz 16:9 wyrównany do górnej krawędzi: wysokość 562.5, pas tylko na dole
+    # window 1000x1000, 16:9 image aligned to the top edge: height 562.5, a bar only at the bottom
     shapes = overlay_shapes(_state(), 1000, 1000)
     det = next(s for s in shapes if s.kind == "rect" and s.label)
     k = 1000 / 960
@@ -71,7 +71,7 @@ def test_shapes_map_to_top_aligned_image() -> None:
 
 
 def test_shapes_pillarbox_golden_grid_and_aim() -> None:
-    # okno szersze niż 16:9: pasy po bokach; linie i punkty złotego podziału w obrazie
+    # window wider than 16:9: bars at the sides; golden-ratio lines and points in the image
     shapes = overlay_shapes(_state(), 2000, 900)
     k = 900 / 540
     ox = (2000 - 960 * k) / 2
@@ -88,7 +88,7 @@ def test_shapes_pillarbox_golden_grid_and_aim() -> None:
 
 
 def test_no_trigger_zone_box() -> None:
-    # Prostokąt strefy wyzwalania usunięty: kadr ocenia się po punkcie złotego podziału.
+    # The trigger zone rectangle was removed: framing is judged by the golden-ratio point.
     shapes = overlay_shapes(_state(), 960, 540)
     assert [s for s in shapes if s.kind == "rect" and not s.label] == []
 
@@ -102,7 +102,7 @@ def test_aim_point_follows_side() -> None:
 def test_shapes_head_points_and_target() -> None:
     shapes = overlay_shapes(_state(), 960, 540)
     heads = [s for s in shapes if s.kind == "dot" and s.r == 4]
-    assert [(s.x, s.y) for s in heads] == [(500.0, 300.0)], "tylko punkty głowy, bez barku"
+    assert [(s.x, s.y) for s in heads] == [(500.0, 300.0)], "only head points, no shoulder"
     target = [s for s in shapes if s.kind == "dot" and s.r == 8]
     assert [(s.x, s.y) for s in target] == [(500.0, 300.0)]
 
@@ -116,9 +116,9 @@ def test_no_shapes_when_disabled_or_unsized() -> None:
 def test_golden_grid_and_aim_point_are_drawn() -> None:
     state = TrackerState(enabled=True, frame_size=(960, 540), zones=(0.15, 0.12), aim=(0.382, 0.382))
     out = annotate(np.zeros((1080, 1920, 3), np.uint8), state)
-    assert out[100, int(0.618 * 1920)].any(), "pionowa linia złotego podziału"
-    assert out[int(0.382 * 1080), int(0.382 * 1920)].any(), "punkt docelowy"
-    assert out[int(0.618 * 1080), int(0.618 * 1920) + 5].any(), "punkt przecięcia (dolny prawy)"
+    assert out[100, int(0.618 * 1920)].any(), "vertical golden-ratio line"
+    assert out[int(0.382 * 1080), int(0.382 * 1920)].any(), "target point"
+    assert out[int(0.618 * 1080), int(0.618 * 1920) + 5].any(), "intersection point (lower right)"
 
 
 
@@ -128,8 +128,8 @@ def _tracked(selection: str, left: float = 0.0) -> TrackerState:
 
 
 def test_frame_point_inverts_the_overlay_geometry() -> None:
-    # Kliknięcie w lewy górny róg ramki na nakładce musi wrócić jako róg ramki w klatce -
-    # dla okna kwadratowego (pas na dole) i szerokiego (pasy po bokach).
+    # A click on the top-left corner of the box on the overlay must come back as the corner of
+    # the box in the frame - for a square window (bar at the bottom) and a wide one (bars at the sides).
     for box_w, box_h in ((1000, 1000), (2000, 900), (500, 900)):
         det = next(s for s in overlay_shapes(_state(), box_w, box_h) if s.kind == "rect" and s.label)
         fx, fy = frame_point(box_w, box_h, (960, 540), det.x, det.y)
@@ -137,11 +137,11 @@ def test_frame_point_inverts_the_overlay_geometry() -> None:
 
 
 def test_frame_point_outside_the_image_is_none() -> None:
-    assert frame_point(2000, 900, (960, 540), 100, 400) is None, "pas po lewej"
-    assert frame_point(1000, 1000, (960, 540), 500, 800) is None, "pas pod obrazem"
+    assert frame_point(2000, 900, (960, 540), 100, 400) is None, "bar on the left"
+    assert frame_point(1000, 1000, (960, 540), 500, 800) is None, "bar under the image"
     assert frame_point(1000, 1000, (960, 540), -1, 10) is None
     assert frame_point(0, 0, (960, 540), 10, 10) is None
-    assert frame_point(1000, 1000, (0, 0), 10, 10) is None, "brak klatki"
+    assert frame_point(1000, 1000, (0, 0), 10, 10) is None, "no frame"
 
 
 def test_selection_labels_follow_the_language() -> None:
@@ -153,7 +153,7 @@ def test_selection_labels_follow_the_language() -> None:
         assert "searching… 4 s" in labels and not any(l.startswith("following") for l in labels)
         i18n.set_language("pl")
         labels = [s.label for s in overlay_shapes(_tracked("selected"), 960, 540) if s.kind == "rect"]
-        assert "śledzę #1" in labels
+        assert "śledzę #1" in labels    # polish: deliberate
     finally:
         i18n.set_language("en")
 
@@ -166,4 +166,4 @@ def test_selection_text_returns_messages() -> None:
     assert selection_text(_state()) is None
 
 if __name__ == "__main__":
-    run(globals(), "Rysowanie wykryć")
+    run(globals(), "Drawing detections")

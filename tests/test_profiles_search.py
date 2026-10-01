@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile śledzenia i planer punktów skanu.
+"""Tracking profiles and the scan-point planner.
 
     .venv/bin/python tests/test_profiles_search.py
 """
@@ -38,7 +38,7 @@ def test_unknown_profile_falls_back_to_talk() -> None:
 def test_profile_names_are_english_and_default_is_talk() -> None:
     assert set(PROFILES) == {"talk", "presentation"} and DEFAULT_PROFILE == "talk"
     assert TALK.name == "talk" and PRESENTATION.name == "presentation"
-    assert resolve("rozmowa").name == "talk", "unknown names fall back to the default profile"
+    assert resolve("rozmowa").name == "talk", "unknown names fall back to the default profile"    # polish: deliberate
 
 
 def test_pan_sequence_sweeps_one_side_then_the_other() -> None:
@@ -58,7 +58,7 @@ def test_pan_sequence_clamps_start() -> None:
 def test_startup_plan_has_second_row_higher() -> None:
     plan = startup_plan(0.0, -deg(5), PAN, TILT)
     tilts = sorted({t for _, t in plan})
-    assert tilts == [-deg(5), deg(15)] and len(plan) == 14      # drugi rząd sięga głowy stojącej osoby
+    assert tilts == [-deg(5), deg(15)] and len(plan) == 14      # the second row reaches a standing person's head
 
 
 def test_local_plan_is_three_points_around_center() -> None:
@@ -72,4 +72,4 @@ def test_local_plan_near_limit_drops_duplicates() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Profile i skan")
+    run(globals(), "Profiles and scan")

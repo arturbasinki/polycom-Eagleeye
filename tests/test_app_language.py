@@ -35,7 +35,7 @@ def test_diagnostics_text_is_translated() -> None:
     finally:
         i18n.set_language("en")
     assert "mode" in english and "tracking" in english and "idle" in english and "left" in english
-    assert "tryb" in polish and "śledzenie" in polish and "spokój" in polish and "lewy" in polish
+    assert "tryb" in polish and "śledzenie" in polish and "spokój" in polish and "lewy" in polish    # polish: deliberate
 
 
 def test_diagnostics_text_handles_an_empty_state() -> None:
@@ -64,7 +64,7 @@ def test_language_switch_rebuilds_the_window_labels() -> None:
         ui = CameraApp(MagicMock(), engine, MagicMock())
         assert ui.device_dd.label == "device"
         ui._on_language_change(SimpleNamespace(control=SimpleNamespace(value="pl")))
-        assert ui.device_dd.label == "urządzenie" and ui.profile_dd.options[0].text == "rozmowa"
+        assert ui.device_dd.label == "urządzenie" and ui.profile_dd.options[0].text == "rozmowa"      # polish: deliberate
         assert engine.settings["language"] == "pl"
         ui._on_language_change(SimpleNamespace(control=SimpleNamespace(value="en")))
         assert ui.device_dd.label == "device"

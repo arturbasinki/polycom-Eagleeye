@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gniazdo sterujące: polecenia, błędy, jedna instancja, martwe gniazdo.
+"""Control socket: commands, errors, a single instance, a dead socket.
 
     .venv/bin/python tests/test_control.py
 """
@@ -90,7 +90,7 @@ def test_stale_socket_is_removed() -> None:
     path = temp_socket()
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.bind(str(path))
-    s.close()                                  # plik został, nikt nie słucha - jak po awarii
+    s.close()                                  # the file is left, nobody is listening - as after a crash
     assert path.exists()
     assert not instance_running(path)
     assert not path.exists()
@@ -145,4 +145,4 @@ def test_socket_path_uses_runtime_dir() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Gniazdo sterujące")
+    run(globals(), "Control socket")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Znacznik czasu klatki: konwersja timeval i ochrona przed złym zegarem.
+"""Frame timestamp: timeval conversion and protection against a bad clock.
 
     .venv/bin/python tests/test_v4l2_time.py
 """
@@ -37,4 +37,4 @@ def test_stale_timestamp_falls_back_to_now() -> None:
 
 
 if __name__ == "__main__":
-    run(globals(), "Znacznik czasu klatki")
+    run(globals(), "Frame timestamp")

@@ -1,4 +1,4 @@
-"""Atrapa ControlDevice: pamięta wartości i każdy zapis, bez sprzętu."""
+"""Test double for ControlDevice: remembers values and every write, without hardware."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class FakeControls:
 
     def get(self, ctrl_id: int) -> int:
         if ctrl_id not in self.values:
-            raise V4L2Error("brak kontrolki")
+            raise V4L2Error("no such control")
         return self.values[ctrl_id]
 
     def set(self, ctrl_id: int, value: int) -> int:
@@ -56,7 +56,7 @@ class FakeControls:
 
 
 class FakeCameraStream:
-    """Atrapa MjpegStream: stała klatka JPEG, nowa co 1/30 s."""
+    """Test double for MjpegStream: a constant JPEG frame, a new one every 1/30 s."""
 
     def __init__(self, path: str = "/dev/video0", width: int = 640, height: int = 360) -> None:
         import time
@@ -86,14 +86,15 @@ class FakeCameraStream:
 
 
 class TwoPeople:
-    """Dwie stojące osoby, współrzędne w klatce po dekodowaniu w skali 1/2 (min. 320x180). ``observe`` działa jak
-    Perception w trybie automatycznym - zwraca większą osobę; ``observation`` jak przy wyborze."""
+    """Two standing people, coordinates in the frame after half-scale decoding (min. 320x180).
+    ``observe`` works like Perception in automatic mode - it returns the bigger person;
+    ``observation`` as on selection."""
 
     last_ms = 0.0
     description = "atrapa"
 
     def __init__(self) -> None:
-        self.left = Detection(40, 20, 50, 140, 0.9, "poza")        # większa
+        self.left = Detection(40, 20, 50, 140, 0.9, "poza")        # the bigger one
         self.right = Detection(200, 20, 45, 130, 0.9, "poza")
         self.dets = [self.left, self.right]
         self.fail_observation = False
@@ -108,5 +109,5 @@ class TwoPeople:
 
     def observation(self, det: Detection, t: float) -> Observation:
         if self.fail_observation:
-            raise RuntimeError("awaria wyboru")
+            raise RuntimeError("selection failure")
         return self._obs(det, t)
