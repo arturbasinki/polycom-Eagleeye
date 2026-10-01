@@ -236,5 +236,12 @@
   "live_session.cue.lean_aside": "odchyl się w bok",
   "live_session.cue.stand": "wstań",
   "live_session.cue.sit_down": "usiądź",
-  "live_session.cue.end": "koniec"
+  "live_session.cue.end": "koniec",
+  "light.failed": "korekta światła nie powiodła się (zobacz log)",
+  "light.no_face": "twarz niewidoczna - zwróć się do kamery",
+  "light.no_frame": "brak klatki z kamery",
+  "light.no_person": "nie znaleziono osoby w kadrze",
+  "light.no_skin": "za mało skóry do pomiaru",
+  "light.ok": "światło skorygowane: jasność twarzy {before} → {after}",
+  "light.well_lit": "twarz jest już dobrze oświetlona"
 }

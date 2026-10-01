@@ -236,5 +236,12 @@
   "live_session.cue.lean_aside": "lean to the side",
   "live_session.cue.stand": "stand up",
   "live_session.cue.sit_down": "sit down",
-  "live_session.cue.end": "end"
+  "live_session.cue.end": "end",
+  "light.failed": "light correction failed (see the log)",
+  "light.no_face": "face not visible - turn towards the camera",
+  "light.no_frame": "no camera frame yet",
+  "light.no_person": "no person found in the frame",
+  "light.no_skin": "not enough skin visible to measure",
+  "light.ok": "light corrected: face brightness {before} → {after}",
+  "light.well_lit": "the face is already well lit"
 }

@@ -111,3 +111,22 @@ class TwoPeople:
         if self.fail_observation:
             raise RuntimeError("selection failure")
         return self._obs(det, t)
+
+
+def face_scene(skin_y: int, width: int = 640, height: int = 360):
+    """BGR frame with a skin-coloured face of luma ``skin_y`` on a mid-grey wall, and the face's
+    detection (5 head keypoints). Everything scales with the frame, so any resolution works."""
+    import cv2
+    import numpy as np
+
+    u = height / 360.0
+    cx, cy = width // 2, height // 2
+    ycc = np.full((height, width, 3), (150, 128, 128), np.uint8)       # wall: neutral chroma
+    x0, x1 = int(cx - 40 * u), int(cx + 40 * u)
+    y0, y1 = int(cy - 50 * u), int(cy + 50 * u)
+    ycc[y0:y1, x0:x1] = (skin_y, 145, 110)                             # Cr, Cb inside the skin range
+    frame = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
+    keypoints = ((cx, cy, 0.9), (cx + 15 * u, cy - 15 * u, 0.9), (cx - 15 * u, cy - 15 * u, 0.9),
+                 (cx + 35 * u, cy - 10 * u, 0.9), (cx - 35 * u, cy - 10 * u, 0.9)) + ((0.0, 0.0, 0.0),) * 12
+    det = Detection(int(x0 - 20 * u), int(y0 - 20 * u), int(120 * u), int(300 * u), 0.9, "pose", keypoints)
+    return frame, det
