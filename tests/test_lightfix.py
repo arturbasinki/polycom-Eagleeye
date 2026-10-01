@@ -112,5 +112,24 @@ def test_status_messages_exist_in_the_catalog() -> None:
         assert not text.startswith("light."), (status, text)
 
 
+def test_correct_jpeg_changes_luma_and_keeps_chroma() -> None:
+    from eagleeye.lightfix import correct_jpeg
+
+    ok, buf = cv2.imencode(".jpg", np.full((180, 320, 3), (90, 140, 200), np.uint8))
+    lut = (255.0 * (np.arange(256) / 255.0) ** 0.5).astype(np.uint8)
+    out = correct_jpeg(buf.tobytes(), lut)
+    assert out is not None
+    before = cv2.cvtColor(cv2.imdecode(buf, cv2.IMREAD_COLOR), cv2.COLOR_BGR2YCrCb)
+    after = cv2.cvtColor(cv2.imdecode(np.frombuffer(out, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2YCrCb)
+    assert after[..., 0].mean() > before[..., 0].mean() + 20
+    assert abs(float(after[..., 1].mean()) - float(before[..., 1].mean())) < 3
+
+
+def test_correct_jpeg_returns_none_for_garbage() -> None:
+    from eagleeye.lightfix import correct_jpeg
+
+    assert correct_jpeg(b"not a jpeg", np.arange(256, dtype=np.uint8)) is None
+
+
 if __name__ == "__main__":
     run(globals(), "Light correction")

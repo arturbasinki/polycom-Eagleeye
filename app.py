@@ -60,6 +60,9 @@ SLIDER_WIDTH = 220
 OPTICS_STEP_ZOOM = 600      # zoom step of the buttons (~1.3x)
 OPTICS_STEP_FOCUS = 150
 PREVIEW_BADGE_PERIOD = 1.0  # s - an fps caption every frame is a second Flet message per frame
+# Correcting a preview frame costs a decode, a table lookup and an encode (tools/measure_light_preview.py,
+# gate 8 ms per frame). Over the gate: the preview stays raw and only the badge shows the correction.
+PREVIEW_CORRECTION = False
 
 log = logging.getLogger("eagleeye")
 

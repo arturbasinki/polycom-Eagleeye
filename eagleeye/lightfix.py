@@ -8,11 +8,14 @@ Constants are measurement calibration and live here, not in config.json.
 
 from __future__ import annotations
 
+import io
 import math
+import warnings
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from .detectors import Detection
 from .i18n import Message, msg
@@ -30,6 +33,7 @@ ROI_MIN_SIDE_FRACTION = 1.0 / 6.0     # of the frame height (120 px at 720p)
 MIN_SKIN_FRACTION = 0.0005            # of the frame area (about 460 px at 1280x720)
 CR_RANGE = (133, 173)                 # standard YCrCb skin range
 CB_RANGE = (77, 127)
+PREVIEW_JPEG_QUALITY = 90             # JPEG quality when a corrected preview frame is re-encoded
 
 OK = "ok"
 WELL_LIT = "well_lit"
@@ -129,3 +133,20 @@ def status_message(result: LightResult) -> Message:
         NO_SKIN: msg("light.no_skin"),
         FAILED: msg("light.failed"),
     }[result.status]
+
+
+def correct_jpeg(jpg: bytes, lut: np.ndarray, quality: int = PREVIEW_JPEG_QUALITY) -> bytes | None:
+    """The in-app preview shows raw JPEG bytes, so a correction there is decode, table, encode.
+    Works on the luma plane only (JPEG is YCbCr, as in ``vcam.jpeg_to_i420``). None on a bad JPEG."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with Image.open(io.BytesIO(jpg)) as image:
+                image.draft("YCbCr", image.size)
+                ycc = np.array(image if image.mode == "YCbCr" else image.convert("YCbCr"))
+        ycc[..., 0] = cv2.LUT(ycc[..., 0], lut)
+        out = io.BytesIO()
+        Image.frombytes("YCbCr", (ycc.shape[1], ycc.shape[0]), ycc.tobytes()).save(out, "JPEG", quality=quality)
+        return out.getvalue()
+    except Exception:
+        return None
