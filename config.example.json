@@ -1,0 +1,25 @@
+{
+  "settings": {
+    "device": "/dev/video0",
+    "preview_width": 1280,
+    "preview_height": 720,
+    "preview_fps": 15,
+    "overlay": true,
+    "language": "auto",
+    "dynamics": {},
+    "tracking": {
+      "profile": "talk",
+      "overrides": {},
+      "use_gpu": true,
+      "invert_pan": false,
+      "invert_tilt": false,
+      "rate_hz": 15.0,
+      "home": null,
+      "last_azimuth": null,
+      "record": false,
+      "auto_zoom": true,
+      "select_hold_s": 6.0
+    }
+  },
+  "presets": []
+}

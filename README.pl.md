@@ -183,6 +183,31 @@ Podgląd w Meet jest dla Ciebie lustrzany; uczestnicy widzą obraz prawidłowo, 
 
 Tryb deweloperski bez instalacji: `.venv/bin/python -m eagleeye.cli`.
 
+## Konfiguracja
+
+Ustawienia i presety trzyma `config.json` obok kodu. Pliku **nie ma w gicie**: aplikacja tworzy go
+przy pierwszym zapisie (i działa bez niego), więc Twoje ustawienia i pozycje kamery nie trafiają
+do commitów. [`config.example.json`](config.example.json) pokazuje format ze wszystkimi wartościami
+domyślnymi; skopiuj go do `config.json`, jeśli wolisz edytować ustawienia ręcznie, a w przeciwnym
+razie zmieniaj je w aplikacji.
+
+| Klucz | Znaczenie |
+|---|---|
+| `device`, `preview_width`, `preview_height`, `preview_fps` | węzeł kamery i rozmiar podglądu |
+| `overlay` | rysowanie wykryć i linii złotego podziału na podglądzie |
+| `language` | `auto` (z `$LANG`), `en` albo `pl` |
+| `tracking.profile` | `talk` albo `presentation`; `tracking.overrides` to zmiany z sekcji „zaawansowane” |
+| `tracking.use_gpu`, `tracking.rate_hz` | silnik detekcji i tempo pętli |
+| `tracking.invert_pan`, `tracking.invert_tilt` | odwrócenie kierunku, gdy Twój egzemplarz się różni |
+| `tracking.home`, `tracking.last_azimuth` | pozycja pan/tilt, do której kamera wraca / od której zaczyna skan |
+| `tracking.auto_zoom`, `tracking.select_hold_s` | zoom automatyczny; czekanie na wybraną osobę (s) |
+| `tracking.record` | zapis sesji śledzenia do `captures/sessions/` |
+| `dynamics` | nadpisania kalibracji głowicy (puste = kalibracja z `eagleeye/head_model.py`) |
+
+Kalibracja głowicy jest w kodzie, więc kamera śledzi dobrze także bez `config.json`. Dla innego
+egzemplarza `tools/measure_dynamics.py`, `tools/measure_zoom.py` i `tools/measure_trajectory.py`
+z opcją `--save` zapisują zmierzone wartości w `dynamics`.
+
 ## Co potrafi
 
 **Połączenie** — wybór urządzenia i rozdzielczości podglądu (640×360 … 1920×1080),

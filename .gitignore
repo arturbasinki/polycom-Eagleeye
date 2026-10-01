@@ -24,3 +24,7 @@ resources/
 
 # Session marker left in the working directory by an editor tool
 :memory:.ses
+
+# Live settings and presets of one installation (the application writes it). The template is
+# config.example.json; calibration lives in code (eagleeye/head_model.py), so no file is needed.
+config.json

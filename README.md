@@ -192,6 +192,31 @@ the app has no picture to track).
 
 ---
 
+## Configuration
+
+Settings and presets are kept in `config.json` next to the code. The file is **not** in git:
+the application creates it on the first save (and runs fine without it), so your settings and
+camera positions never end up in a commit. [`config.example.json`](config.example.json) shows the
+format with every default value; copy it to `config.json` if you prefer to edit settings by hand,
+otherwise just change them in the app.
+
+| Key | Meaning |
+|---|---|
+| `device`, `preview_width`, `preview_height`, `preview_fps` | camera node and preview size |
+| `overlay` | draw detections and the golden-ratio guides on the preview |
+| `language` | `auto` (from `$LANG`), `en` or `pl` |
+| `tracking.profile` | `talk` or `presentation`; `tracking.overrides` holds the "advanced" tweaks |
+| `tracking.use_gpu`, `tracking.rate_hz` | detector backend and loop rate |
+| `tracking.invert_pan`, `tracking.invert_tilt` | flip a direction if your unit differs |
+| `tracking.home`, `tracking.last_azimuth` | pan/tilt the camera returns to / starts scanning from |
+| `tracking.auto_zoom`, `tracking.select_hold_s` | automatic zoom; seconds to wait for a selected person |
+| `tracking.record` | record tracking sessions to `captures/sessions/` |
+| `dynamics` | overrides of the head calibration (empty = the calibration in `eagleeye/head_model.py`) |
+
+The head calibration lives in code, so you do not need `config.json` for the camera to track well.
+For another unit, `tools/measure_dynamics.py`, `tools/measure_zoom.py` and
+`tools/measure_trajectory.py` with `--save` write the measured values into `dynamics`.
+
 ## Features
 
 - **PTZ**: eight-way pad plus centre, step sizes of 1°, 5°, 15°, 40°, absolute sliders.
