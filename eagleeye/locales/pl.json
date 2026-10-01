@@ -41,6 +41,8 @@
   "app.invert_pan": "odwróć pan",
   "app.invert_tilt": "odwróć tilt",
   "app.ladder_step": "czas kroku utraty",
+  "app.language": "Language / Język",
+  "app.language_auto": "Automatycznie",
   "app.move_camera": "przesuń kamerę",
   "app.no_controls": "brak połączenia - nie znam kontrolek kamery",
   "app.notice_auto_mode_off": "wyłączono tryb automatyczny, żeby ustawić „{control}”",

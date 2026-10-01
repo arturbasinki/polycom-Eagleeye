@@ -31,7 +31,7 @@ from eagleeye.control import ControlServer, InstanceRunning, send
 from eagleeye.detectors import gpu_status
 from eagleeye.engine import Engine, UiHooks
 from eagleeye.framing import SHOTS
-from eagleeye.i18n import msg, render, t
+from eagleeye.i18n import available_languages, msg, render, t
 from eagleeye.overlay import Shape, frame_point, overlay_shapes, selection_text
 from eagleeye.profiles import PROFILES, TUNABLE, resolve
 from eagleeye.trayproc import TrayProcess
@@ -217,6 +217,15 @@ class CameraApp:
             value=f"{s['preview_width']}x{s['preview_height']}",
             options=[ft.DropdownOption(key=f"{w}x{h}", text=f"{w} × {h}") for w, h in RESOLUTIONS],
             on_select=self._on_resolution_change,
+        )
+        # The selector sits next to the device choice; rebuilding the window never touches
+        # the engine, so tracking and the virtual camera keep running.
+        self.language_dd = ft.Dropdown(
+            label=t("app.language"), width=170, dense=True, value=self.settings["language"],
+            options=[ft.DropdownOption(key="auto", text=t("app.language_auto"))]
+                    + [ft.DropdownOption(key=code, text=name)
+                       for code, name in available_languages().items()],
+            on_select=self._on_language_change,
         )
         self.fps_dd = ft.Dropdown(
             label=t("app.preview_fps"), width=130, dense=True, value=str(s["preview_fps"]),
@@ -421,7 +430,7 @@ class CameraApp:
                 scroll=ft.ScrollMode.AUTO, expand=True, spacing=10,
                 controls=[
                     self._card(t("app.card_connection"), ft.Icons.CABLE, [
-                        ft.Row([self.device_dd, self.res_dd], spacing=8, wrap=True),
+                        ft.Row([self.device_dd, self.res_dd, self.language_dd], spacing=8, wrap=True),
                         ft.Row([self.fps_dd, self.overlay_sw, self.connect_btn], spacing=10, wrap=True),
                         self.connection_status,
                         self.gpu_text,
@@ -801,6 +810,26 @@ class CameraApp:
     def _on_fps_change(self, e) -> None:
         self.settings["preview_fps"] = int(e.control.value or 15)
         self._save_settings(silent=True)
+
+    def _on_language_change(self, e) -> None:
+        self.engine.set_language(e.control.value or "auto")
+        self._rebuild_ui()
+
+    def _rebuild_ui(self) -> None:
+        """Rebuild every widget in the active language. The engine and its state are untouched,
+        so tracking, the virtual camera and the camera connection keep running."""
+        self.page.controls.clear()
+        self.control_widgets.clear()
+        self.switch_widgets.clear()
+        self._build_widgets()
+        self._build_layout()
+        self.page.title = t("app.title")
+        self._privacy_shown = False          # the privacy card is re-rendered in the new language
+        self._shown = None                   # force _sync_connection to repaint the connection card
+        self._overlay_drawn = None           # force the overlay to be redrawn after the rebuild
+        self._last_jpg = None                # no stale frame belongs to the rebuilt preview
+        self._sync_connection()
+        self._refresh_widgets()
 
     def _on_connect(self, _e) -> None:
         if self.engine.open_camera() is None:

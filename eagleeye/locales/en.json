@@ -41,6 +41,8 @@
   "app.invert_pan": "invert pan",
   "app.invert_tilt": "invert tilt",
   "app.ladder_step": "loss step time",
+  "app.language": "Language / Język",
+  "app.language_auto": "Automatic",
   "app.move_camera": "move camera",
   "app.no_controls": "not connected - camera controls unknown",
   "app.notice_auto_mode_off": "automatic mode turned off to set “{control}”",

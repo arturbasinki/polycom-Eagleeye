@@ -56,5 +56,37 @@ def test_window_labels_come_from_the_catalog() -> None:
         engine.shutdown()
 
 
+def test_language_switch_rebuilds_the_window_labels() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    engine.command("language", "en")
+    try:
+        ui = CameraApp(MagicMock(), engine, MagicMock())
+        assert ui.device_dd.label == "device"
+        ui._on_language_change(SimpleNamespace(control=SimpleNamespace(value="pl")))
+        assert ui.device_dd.label == "urządzenie" and ui.profile_dd.options[0].text == "rozmowa"
+        assert engine.settings["language"] == "pl"
+        ui._on_language_change(SimpleNamespace(control=SimpleNamespace(value="en")))
+        assert ui.device_dd.label == "device"
+        assert ui.language_dd.value == "en"
+    finally:
+        i18n.set_language("en")
+        engine.shutdown()
+
+
+def test_rebuild_keeps_the_settings_the_user_chose() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    engine.command("language", "en")
+    try:
+        ui = CameraApp(MagicMock(), engine, MagicMock())
+        engine.settings["tracking"]["profile"] = "presentation"
+        ui._rebuild_ui()
+        assert ui.profile_dd.value == "presentation"
+    finally:
+        i18n.set_language("en")
+        engine.shutdown()
+
+
 if __name__ == "__main__":
     run(globals(), "Window language")
