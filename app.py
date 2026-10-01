@@ -31,7 +31,7 @@ from eagleeye.control import ControlServer, InstanceRunning, send
 from eagleeye.detectors import gpu_status
 from eagleeye.engine import Engine, UiHooks
 from eagleeye.framing import SHOTS
-from eagleeye.i18n import render
+from eagleeye.i18n import msg, render, t
 from eagleeye.overlay import Shape, frame_point, overlay_shapes, selection_text
 from eagleeye.profiles import PROFILES, TUNABLE, resolve
 from eagleeye.trayproc import TrayProcess
@@ -57,8 +57,6 @@ WARN = "#d29922"
 ERROR = "#f85149"
 
 SLIDER_WIDTH = 220
-PROFILE_LABELS = {"talk": "rozmowa", "presentation": "prezentacja (eksperymentalna)"}
-SHOT_LABELS = {"CU": "zbliżenie (CU)", "MCU": "bliski (MCU)", "MS": "średni (MS)"}
 OPTICS_STEP_ZOOM = 600      # krok zoomu przyciskami (~1.3x)
 OPTICS_STEP_FOCUS = 150
 PREVIEW_BADGE_PERIOD = 1.0  # s - napis z fps co klatkę to drugi komunikat do Fleta na klatkę
@@ -91,6 +89,27 @@ def ensure_manual_mode(controls: ControlDevice, ctrl_id: int) -> bool:
     except V4L2Error:
         pass  # brak kontrolki auto - próbujemy zapisać i tak
     return False
+
+
+def _diag_text(state) -> str:
+    """The monospace diagnostics block of the tracking card, in the active language."""
+    def code(prefix: str, value: str) -> str:
+        return t(f"{prefix}.{value}") if value else "-"
+    target = (f"{state.target.source} {state.target.score:.2f} @ {int(state.target.x)},{int(state.target.y)}"
+              if state.target else t("app.target_none"))
+    return t("app.diag",
+             mode=code("director.mode", state.mode),
+             pan_state=code("director.axis", state.pan_state),
+             tilt_state=code("director.axis", state.tilt_state),
+             target=target,
+             side=code("framing.side", state.side),
+             shot=state.shot or "-",
+             yaw="-" if state.yaw is None else f"{state.yaw:+.2f}",
+             zoom_goal="-" if state.zoom_goal is None else int(state.zoom_goal),
+             zoom_mode=t("app.zoom_auto") if state.auto_zoom else t("app.zoom_manual"),
+             pan=state.pan / 3600, tilt=state.tilt / 3600,
+             detection_ms=state.detection_ms, loop_ms=state.loop_ms, fps=state.fps,
+             moves=state.moves, detector=state.detector)
 
 
 class CameraApp:
@@ -158,7 +177,7 @@ class CameraApp:
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Icon(ft.Icons.VIDEOCAM_OFF, size=48, color=MUTED),
-                    ft.Text("kamera niepodłączona", color=MUTED, size=14),
+                    ft.Text(t("app.camera_disconnected"), color=MUTED, size=14),
                 ],
             ),
         )
@@ -189,40 +208,40 @@ class CameraApp:
 
         # --- połączenie ---
         self.device_dd = ft.Dropdown(
-            label="urządzenie", value=s["device"], width=200, dense=True,
+            label=t("app.device"), value=s["device"], width=200, dense=True,
             options=[ft.DropdownOption(key=d, text=d) for d in (list_input_devices(CARD_LABEL) or [s["device"]])],
             on_select=self._on_device_change,
         )
         self.res_dd = ft.Dropdown(
-            label="rozdzielczość", width=170, dense=True,
+            label=t("app.resolution"), width=170, dense=True,
             value=f"{s['preview_width']}x{s['preview_height']}",
             options=[ft.DropdownOption(key=f"{w}x{h}", text=f"{w} × {h}") for w, h in RESOLUTIONS],
             on_select=self._on_resolution_change,
         )
         self.fps_dd = ft.Dropdown(
-            label="podgląd (fps)", width=130, dense=True, value=str(s["preview_fps"]),
+            label=t("app.preview_fps"), width=130, dense=True, value=str(s["preview_fps"]),
             options=[ft.DropdownOption(key=str(f), text=str(f)) for f in (5, 10, 15, 20, 30)],
             on_select=self._on_fps_change,
         )
         self.overlay_sw = ft.Switch(
-            label="rysuj wykrycia", value=bool(s["overlay"]),
+            label=t("app.draw_detections"), value=bool(s["overlay"]),
             on_change=lambda e: self._set_overlay(e.control.value),
         )
-        self.connect_btn = ft.FilledButton("Połącz", icon=ft.Icons.CABLE, on_click=self._on_connect)
+        self.connect_btn = ft.FilledButton(t("app.connect"), icon=ft.Icons.CABLE, on_click=self._on_connect)
         self.connection_status = ft.Text("", size=12, color=MUTED)
 
         # --- wirtualna kamera ---
         self.vcam_status = ft.Text("", size=12, color=MUTED)
-        self.privacy_sw = ft.Switch(label="prywatność (Super+Shift+C)", value=False,
+        self.privacy_sw = ft.Switch(label=t("app.privacy_switch"), value=False,
                                     on_change=self._on_privacy_change)
 
         # --- PTZ ---
-        self.pan_slider = self._axis_slider("pan", CID_PAN_ABSOLUTE)
-        self.tilt_slider = self._axis_slider("tilt", CID_TILT_ABSOLUTE)
+        self.pan_slider = self._axis_slider(t("app.pan"), CID_PAN_ABSOLUTE)
+        self.tilt_slider = self._axis_slider(t("app.tilt"), CID_TILT_ABSOLUTE)
         self.step_dd = ft.Dropdown(
-            label="krok przycisku", width=170, dense=True, value="5",
+            label=t("app.step_label"), width=170, dense=True, value="5",
             options=[ft.DropdownOption(key=k, text=v) for k, v in
-                     (("1", "1° (precyzyjnie)"), ("5", "5°"), ("15", "15°"), ("40", "40° (szybko)"))],
+                     (("1", t("app.step_fine")), ("5", "5°"), ("15", "15°"), ("40", t("app.step_fast")))],
         )
         self.pad = ft.Column(
             spacing=6,
@@ -232,7 +251,7 @@ class CameraApp:
                         self._ptz_button(ft.Icons.NORTH_EAST, 1, -1)],
                        alignment=ft.MainAxisAlignment.CENTER, spacing=6),
                 ft.Row([self._ptz_button(ft.Icons.WEST, -1, 0),
-                        ft.IconButton(ft.Icons.CENTER_FOCUS_STRONG, tooltip="wyśrodkuj (pan i tilt = 0)",
+                        ft.IconButton(ft.Icons.CENTER_FOCUS_STRONG, tooltip=t("app.center_tooltip"),
                                       icon_color=ACCENT, icon_size=26, on_click=self._on_center),
                         self._ptz_button(ft.Icons.EAST, 1, 0)],
                        alignment=ft.MainAxisAlignment.CENTER, spacing=6),
@@ -244,16 +263,16 @@ class CameraApp:
         )
 
         # --- optyka ---
-        self.zoom_slider = self._axis_slider("zoom", CID_ZOOM_ABSOLUTE, fmt=lambda v: f"{v}")
-        self.zoom_in_btn = ft.FilledTonalButton("+ zoom", icon=ft.Icons.ZOOM_IN,
+        self.zoom_slider = self._axis_slider(t("app.zoom"), CID_ZOOM_ABSOLUTE, fmt=lambda v: f"{v}")
+        self.zoom_in_btn = ft.FilledTonalButton(t("app.zoom_plus"), icon=ft.Icons.ZOOM_IN,
                                                 on_click=lambda e: self._nudge(CID_ZOOM_ABSOLUTE, OPTICS_STEP_ZOOM))
-        self.zoom_out_btn = ft.FilledTonalButton("− zoom", icon=ft.Icons.ZOOM_OUT,
+        self.zoom_out_btn = ft.FilledTonalButton(t("app.zoom_minus"), icon=ft.Icons.ZOOM_OUT,
                                                  on_click=lambda e: self._nudge(CID_ZOOM_ABSOLUTE, -OPTICS_STEP_ZOOM))
-        self.focus_auto_sw = ft.Switch(label="autofocus", on_change=self._on_focus_auto)
-        self.focus_slider = self._axis_slider("ostrość", CID_FOCUS_ABSOLUTE)
-        self.focus_in_btn = ft.FilledTonalButton("ostrzej", icon=ft.Icons.ADD,
+        self.focus_auto_sw = ft.Switch(label=t("app.autofocus"), on_change=self._on_focus_auto)
+        self.focus_slider = self._axis_slider(t("app.focus"), CID_FOCUS_ABSOLUTE)
+        self.focus_in_btn = ft.FilledTonalButton(t("app.focus_sharper"), icon=ft.Icons.ADD,
                                                  on_click=lambda e: self._nudge(CID_FOCUS_ABSOLUTE, OPTICS_STEP_FOCUS))
-        self.focus_out_btn = ft.FilledTonalButton("miękcej", icon=ft.Icons.REMOVE,
+        self.focus_out_btn = ft.FilledTonalButton(t("app.focus_softer"), icon=ft.Icons.REMOVE,
                                                   on_click=lambda e: self._nudge(CID_FOCUS_ABSOLUTE, -OPTICS_STEP_FOCUS))
         self.gpu_text = ft.Text("", size=11, color=MUTED)
 
@@ -264,51 +283,51 @@ class CameraApp:
         self.image_switches: list[ft.Control] = []
 
         # --- tracking ---
-        self.track_sw = ft.Switch(label="auto-tracking", value=False, on_change=self._on_tracking_toggle)
+        self.track_sw = ft.Switch(label=t("app.tracking_switch"), value=False, on_change=self._on_tracking_toggle)
         self.profile_dd = ft.Dropdown(
-            label="profil", width=170, dense=True, value=tr["profile"],
+            label=t("app.profile"), width=170, dense=True, value=tr["profile"],
             # "prezentacja" z samą mechaniką nie jedzie płynnie za idącą osobą (odbiór
             # 2026-09-23) - czeka na cyfrowy kadr, więc jest oznaczona w interfejsie.
-            options=[ft.DropdownOption(key=name, text=PROFILE_LABELS.get(name, name)) for name in PROFILES],
+            options=[ft.DropdownOption(key=name, text=t(f"profile.{name}")) for name in PROFILES],
             on_select=self._on_profile_change,
         )
-        self.auto_zoom_sw = ft.Switch(label="zoom automatyczny", value=bool(tr["auto_zoom"]),
+        self.auto_zoom_sw = ft.Switch(label=t("app.auto_zoom"), value=bool(tr["auto_zoom"]),
                                       on_change=self._on_auto_zoom_change)
-        self.gpu_sw = ft.Switch(label="użyj GPU (CUDA)", value=bool(tr["use_gpu"]), on_change=self._on_gpu_change)
-        self.search_btn = ft.FilledTonalButton("szukaj osoby", icon=ft.Icons.TRAVEL_EXPLORE,
+        self.gpu_sw = ft.Switch(label=t("app.use_gpu"), value=bool(tr["use_gpu"]), on_change=self._on_gpu_change)
+        self.search_btn = ft.FilledTonalButton(t("app.search_person"), icon=ft.Icons.TRAVEL_EXPLORE,
                                                on_click=self._on_search)
-        self.home_btn = ft.OutlinedButton("ustaw dom", icon=ft.Icons.HOME, on_click=self._on_set_home)
+        self.home_btn = ft.OutlinedButton(t("app.set_home"), icon=ft.Icons.HOME, on_click=self._on_set_home)
         # Osoba do śledzenia: kliknięcie w podgląd (_on_preview_tap); przycisk wraca do trybu automatycznego.
-        self.auto_pick_btn = ft.OutlinedButton("śledź automatycznie", icon=ft.Icons.PERSON_SEARCH,
+        self.auto_pick_btn = ft.OutlinedButton(t("app.track_auto"), icon=ft.Icons.PERSON_SEARCH,
                                                disabled=True, on_click=self._on_auto_pick)
-        self.select_status = ft.Text("kliknij osobę w podglądzie, żeby śledzić tylko ją", size=12, color=MUTED)
+        self.select_status = ft.Text(t("app.select_hint"), size=12, color=MUTED)
         hold = float(tr["select_hold_s"])
         self.hold_text = ft.Text(f"{hold:.0f} s", size=11, color=MUTED, width=56)
         self.hold_slider = ft.Slider(min=2, max=20, value=hold, divisions=18, width=SLIDER_WIDTH,
                                      on_change_end=self._on_hold_change)
-        self.invert_pan_sw = ft.Switch(label="odwróć pan", value=bool(tr["invert_pan"]),
+        self.invert_pan_sw = ft.Switch(label=t("app.invert_pan"), value=bool(tr["invert_pan"]),
                                        on_change=lambda e: self._set_tracking_flag("invert_pan", e.control.value))
-        self.invert_tilt_sw = ft.Switch(label="odwróć tilt", value=bool(tr["invert_tilt"]),
+        self.invert_tilt_sw = ft.Switch(label=t("app.invert_tilt"), value=bool(tr["invert_tilt"]),
                                         on_change=lambda e: self._set_tracking_flag("invert_tilt", e.control.value))
-        self.record_sw = ft.Switch(label="zapisuj sesję", value=bool(tr["record"]),
+        self.record_sw = ft.Switch(label=t("app.record_session"), value=bool(tr["record"]),
                                    on_change=self._on_record_change)
         base = resolve(tr["profile"], tr["overrides"])
         self.advanced_sliders = [
-            self._override_slider("strefa pan", "trigger_pan", base.trigger_pan, 0.05, 0.35, 0.01, "{:.2f}"),
-            self._override_slider("strefa tilt", "trigger_tilt", base.trigger_tilt, 0.05, 0.35, 0.01, "{:.2f}"),
-            self._override_slider("zwłoka", "dwell", base.dwell, 0.0, 3.0, 0.1, "{:.1f} s"),
-            self._override_slider("czas kroku utraty", "ladder_step_time", base.ladder_step_time, 0.5, 10.0, 0.5, "{:.1f} s"),
-            self._override_slider("próg odwrócenia twarzy", "side_enter", base.side_enter, 0.1, 0.9, 0.05, "{:.2f}"),
-            self._override_slider("próg powrotu na wprost", "side_exit", base.side_exit, 0.05, 0.6, 0.05, "{:.2f}"),
-            self._override_slider("zwłoka zmiany strony", "side_dwell", base.side_dwell, 0.0, 5.0, 0.1, "{:.1f} s"),
+            self._override_slider(t("app.zone_pan"), "trigger_pan", base.trigger_pan, 0.05, 0.35, 0.01, "{:.2f}"),
+            self._override_slider(t("app.zone_tilt"), "trigger_tilt", base.trigger_tilt, 0.05, 0.35, 0.01, "{:.2f}"),
+            self._override_slider(t("app.dwell"), "dwell", base.dwell, 0.0, 3.0, 0.1, "{:.1f} s"),
+            self._override_slider(t("app.ladder_step"), "ladder_step_time", base.ladder_step_time, 0.5, 10.0, 0.5, "{:.1f} s"),
+            self._override_slider(t("app.turn_threshold"), "side_enter", base.side_enter, 0.1, 0.9, 0.05, "{:.2f}"),
+            self._override_slider(t("app.return_threshold"), "side_exit", base.side_exit, 0.05, 0.6, 0.05, "{:.2f}"),
+            self._override_slider(t("app.side_dwell"), "side_dwell", base.side_dwell, 0.0, 5.0, 0.1, "{:.1f} s"),
         ]
         self.shot_dd = ft.Dropdown(
-            label="plan", width=170, dense=True, value=base.shot,
-            options=[ft.DropdownOption(key=k, text=SHOT_LABELS[k]) for k in SHOTS],
+            label=t("app.shot"), width=170, dense=True, value=base.shot,
+            options=[ft.DropdownOption(key=k, text=t(f"shot.{k}")) for k in SHOTS],
             on_select=lambda e: self._set_override("shot", e.control.value),
         )
         self.advanced = ft.ExpansionTile(
-            title=ft.Text("zaawansowane", size=12, color=MUTED),
+            title=ft.Text(t("app.advanced"), size=12, color=MUTED),
             controls=[self.shot_dd, *self.advanced_sliders,
                       ft.Row([self.invert_pan_sw, self.invert_tilt_sw, self.record_sw],
                              spacing=6, wrap=True)],
@@ -317,9 +336,9 @@ class CameraApp:
         self.track_detail = ft.Text("", size=11, color=MUTED, font_family="monospace", selectable=True)
 
         # --- presety ---
-        self.preset_dd = ft.Dropdown(label="preset", width=190, dense=True, options=[],
+        self.preset_dd = ft.Dropdown(label=t("app.preset"), width=190, dense=True, options=[],
                                      on_select=lambda e: None)
-        self.preset_name = ft.TextField(label="nazwa nowego presetu", width=190, dense=True)
+        self.preset_name = ft.TextField(label=t("app.preset_name"), width=190, dense=True)
         self._refresh_preset_options()
 
         # --- stopka ---
@@ -362,7 +381,7 @@ class CameraApp:
     def _ptz_button(self, icon, dx: int, dy: int) -> ft.IconButton:
         return ft.IconButton(
             icon=icon, icon_size=26, icon_color=TEXT,
-            bgcolor=PANEL_SOFT, tooltip="przesuń kamerę",
+            bgcolor=PANEL_SOFT, tooltip=t("app.move_camera"),
             on_click=lambda e: self._ptz_step(dx, dy),
         )
 
@@ -401,59 +420,59 @@ class CameraApp:
             content=ft.Column(
                 scroll=ft.ScrollMode.AUTO, expand=True, spacing=10,
                 controls=[
-                    self._card("Połączenie", ft.Icons.CABLE, [
+                    self._card(t("app.card_connection"), ft.Icons.CABLE, [
                         ft.Row([self.device_dd, self.res_dd], spacing=8, wrap=True),
                         ft.Row([self.fps_dd, self.overlay_sw, self.connect_btn], spacing=10, wrap=True),
                         self.connection_status,
                         self.gpu_text,
                     ]),
-                    self._card("Wirtualna kamera", ft.Icons.VIDEOCAM, [
+                    self._card(t("app.card_virtual_camera"), ft.Icons.VIDEOCAM, [
                         self.privacy_sw, self.vcam_status,
-                    ], subtitle="w Meet / Teams / OBS wybierz kamerę „EagleEye”"),
-                    self._card("Ruch głowicy (PTZ)", ft.Icons.CONTROL_CAMERA, [
-                        ft.Row([ft.Column([self._labeled("pan", self.pan_slider),
-                                           self._labeled("tilt", self.tilt_slider)], spacing=4),
+                    ], subtitle=t("app.virtual_camera_hint")),
+                    self._card(t("app.card_ptz"), ft.Icons.CONTROL_CAMERA, [
+                        ft.Row([ft.Column([self._labeled(t("app.pan"), self.pan_slider),
+                                           self._labeled(t("app.tilt"), self.tilt_slider)], spacing=4),
                                 self.pad], spacing=10,
                                vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
                         self.step_dd,
                     ]),
-                    self._card("Optyka", ft.Icons.CAMERA_OUTDOOR, [
-                        self._labeled("zoom", self.zoom_slider),
+                    self._card(t("app.card_optics"), ft.Icons.CAMERA_OUTDOOR, [
+                        self._labeled(t("app.zoom"), self.zoom_slider),
                         ft.Row([self.zoom_out_btn, self.zoom_in_btn], spacing=8),
                         self.focus_auto_sw,
-                        self._labeled("ostrość", self.focus_slider),
+                        self._labeled(t("app.focus"), self.focus_slider),
                         ft.Row([self.focus_out_btn, self.focus_in_btn], spacing=8),
                     ]),
-                    self._card("Obraz", ft.Icons.TUNE, [
+                    self._card(t("app.card_image"), ft.Icons.TUNE, [
                         self.image_body,
-                        ft.OutlinedButton("przywróć domyślne", icon=ft.Icons.RESTART_ALT,
+                        ft.OutlinedButton(t("app.image_reset"), icon=ft.Icons.RESTART_ALT,
                                           on_click=self._on_reset_image),
                     ]),
-                    self._card("Auto-tracking", ft.Icons.PSYCHOLOGY, [
+                    self._card(t("app.card_tracking"), ft.Icons.PSYCHOLOGY, [
                         ft.Row([self.track_sw, self.profile_dd, self.auto_zoom_sw], spacing=10, wrap=True),
                         ft.Row([self.search_btn, self.home_btn, self.gpu_sw], spacing=8, wrap=True),
                         ft.Row([self.auto_pick_btn, self.select_status], spacing=10, wrap=True),
-                        ft.Row([ft.Text("czekanie na wybraną", size=12, color=MUTED, width=118),
+                        ft.Row([ft.Text(t("app.select_hold"), size=12, color=MUTED, width=118),
                                 self.hold_slider, self.hold_text], spacing=6),
                         self.advanced,
                         ft.Divider(height=1, color=BORDER),
                         self.track_status, self.track_detail,
                     ]),
-                    self._card("Presety", ft.Icons.BOOKMARK_ADDED, [
+                    self._card(t("app.card_presets"), ft.Icons.BOOKMARK_ADDED, [
                         ft.Row([self.preset_dd,
-                                ft.IconButton(ft.Icons.PLAY_ARROW, tooltip="wczytaj preset",
+                                ft.IconButton(ft.Icons.PLAY_ARROW, tooltip=t("app.preset_load"),
                                               icon_color=OK, on_click=self._on_preset_load),
-                                ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="usuń preset",
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip=t("app.preset_delete"),
                                               icon_color=ERROR, on_click=self._on_preset_delete)],
                                spacing=6),
-                        ft.Row([self.preset_name, ft.FilledTonalButton("zapisz", icon=ft.Icons.SAVE,
+                        ft.Row([self.preset_name, ft.FilledTonalButton(t("app.preset_save"), icon=ft.Icons.SAVE,
                                                                        on_click=self._on_preset_save)], spacing=8),
                     ]),
-                    self._card("Akcje", ft.Icons.BOLT, [
+                    self._card(t("app.card_actions"), ft.Icons.BOLT, [
                         ft.Row([
-                            ft.FilledTonalButton("zrzut klatki", icon=ft.Icons.PHOTO_CAMERA,
+                            ft.FilledTonalButton(t("app.snapshot"), icon=ft.Icons.PHOTO_CAMERA,
                                                  on_click=self._on_snapshot),
-                            ft.FilledTonalButton("zapisz ustawienia", icon=ft.Icons.SAVE_AS,
+                            ft.FilledTonalButton(t("app.save_settings"), icon=ft.Icons.SAVE_AS,
                                                  on_click=lambda e: self._save_settings()),
                         ], spacing=8, wrap=True),
                     ]),
@@ -470,20 +489,20 @@ class CameraApp:
     def _image_controls(self) -> list[ft.Control]:
         """Suwaki i przełączniki obrazu budowane z kontrolek zgłoszonych przez kamerę."""
         order = [
-            (CID_BRIGHTNESS, "jasność"), (CID_CONTRAST, "kontrast"),
-            (CID_SATURATION, "nasycenie"), (CID_HUE, "odcień"),
-            (CID_GAMMA, "gamma"), (CID_SHARPNESS, "ostrość obrazu"),
-            (CID_WHITE_BALANCE_TEMP, "balans bieli (K)"),
+            (CID_BRIGHTNESS, t("app.image_brightness")), (CID_CONTRAST, t("app.image_contrast")),
+            (CID_SATURATION, t("app.image_saturation")), (CID_HUE, t("app.image_hue")),
+            (CID_GAMMA, t("app.image_gamma")), (CID_SHARPNESS, t("app.image_sharpness")),
+            (CID_WHITE_BALANCE_TEMP, t("app.image_white_balance")),
         ]
         out: list[ft.Control] = []
         if not self.controls:
-            return [ft.Text("brak połączenia - nie znam kontrolek kamery", size=12, color=MUTED)]
+            return [ft.Text(t("app.no_controls"), size=12, color=MUTED)]
         for cid, label in order:
             if self.controls.control(cid) is None:
                 continue
             out.append(self._labeled(label, self._axis_slider(label, cid)))
-        for cid, label in ((CID_WHITE_BALANCE_AUTO, "balans bieli auto"),
-                           (CID_BACKLIGHT_COMP, "kompensacja podświetlenia")):
+        for cid, label in ((CID_WHITE_BALANCE_AUTO, t("app.wb_auto")),
+                           (CID_BACKLIGHT_COMP, t("app.backlight"))):
             ctrl = self.controls.control(cid)
             if ctrl is None:
                 continue
@@ -508,8 +527,9 @@ class CameraApp:
                                         f"{self.stream.actual_width}×{self.stream.actual_height}")
         self.connection_status.color = OK
         gpu = gpu_status()
-        self.gpu_text.value = (f"GPU: {gpu['device']} ({gpu['provider']})" if gpu["available"]
-                               else f"GPU: niedostępne — {gpu.get('note') or 'brak CUDA'}")
+        self.gpu_text.value = (t("app.gpu_available", device=gpu["device"], provider=gpu["provider"])
+                               if gpu["available"]
+                               else t("app.gpu_unavailable", note=gpu.get("note") or t("app.gpu_no_cuda")))
         self._rebuild_image_controls()
         self._apply_control_ranges()
         self._sync_from_device()
@@ -586,7 +606,7 @@ class CameraApp:
     def _friendly_error(self, exc: Exception) -> str:
         text = str(exc)
         if "Permission denied" in text:
-            return f"{text} — kontrolka nieaktywna (tryb automatyczny lub tylko do odczytu)"
+            return t("app.error_control_inactive", error=text)
         return text
 
     def _auto_switch_widget(self, ctrl_id: int) -> ft.Switch | None:
@@ -612,8 +632,8 @@ class CameraApp:
                             widget.update()
                         except Exception:
                             pass
-                    self._notify(f"wyłączono tryb automatyczny, "
-                                 f"żeby ustawić „{self._control_label(ctrl_id)}”", MUTED)
+                    self._notify(t("app.notice_auto_mode_off",
+                                   control=self._control_label(ctrl_id)), MUTED)
             except V4L2Error:
                 pass  # brak kontrolki auto - i tak próbujemy zapisać
         try:
@@ -628,7 +648,7 @@ class CameraApp:
             moved = self.tracker.move_to(pan=target if ctrl_id == CID_PAN_ABSOLUTE else None,
                                          tilt=target if ctrl_id == CID_TILT_ABSOLUTE else None)
             if not moved:
-                self._notify("najpierw wyłącz auto-tracking, żeby sterować ręcznie", WARN)
+                self._notify(t("app.hint_manual_control"), WARN)
             return
         self._write(ctrl_id, int(round(value)))
 
@@ -655,11 +675,11 @@ class CameraApp:
         delta = float(self.step_dd.value or 5) * 3600
         # dy=+1 oznacza "w dół", a tilt dodatni patrzy w górę.
         if not self.tracker.nudge(dx * delta, -dy * delta):
-            self._notify("najpierw wyłącz auto-tracking, żeby sterować ręcznie", WARN)
+            self._notify(t("app.hint_manual_control"), WARN)
 
     def _on_center(self, _e=None) -> None:
         if self.tracker is not None and not self.tracker.move_to(pan=0, tilt=0):
-            self._notify("wyłącz auto-tracking, żeby wyśrodkować ręcznie", WARN)
+            self._notify(t("app.hint_manual_center"), WARN)
 
     def _on_focus_auto(self, e) -> None:
         self._write(CID_FOCUS_AUTO, 1 if e.control.value else 0)
@@ -668,7 +688,7 @@ class CameraApp:
         self.settings["tracking"]["use_gpu"] = bool(e.control.value)
         if self.tracker:
             self.tracker.set_use_gpu(bool(e.control.value))
-        self._notify("detekcja: " + ("GPU (CUDA)" if e.control.value else "CPU"), OK)
+        self._notify(t("app.notice_detection", where="GPU (CUDA)" if e.control.value else "CPU"), OK)
 
     def _set_overlay(self, value: bool) -> None:
         self.overlay = bool(value)
@@ -676,7 +696,7 @@ class CameraApp:
 
     def _set_tracking_flag(self, key: str, value) -> None:
         self.settings["tracking"][key] = bool(value)
-        self._notify("zmiana zadziała po ponownym połączeniu z kamerą", MUTED)
+        self._notify(t("app.notice_reconnect"), MUTED)
 
     def _on_record_change(self, e) -> None:
         on = bool(e.control.value)
@@ -684,7 +704,7 @@ class CameraApp:
         self._save_settings(silent=True)
         if self.tracker:
             self.tracker.set_record(on)
-        self._notify("zapis sesji włączony (captures/sessions/)" if on else "zapis sesji wyłączony",
+        self._notify(t("app.notice_record_on") if on else t("app.notice_record_off"),
                      OK if on else MUTED)
 
     def _on_auto_zoom_change(self, e) -> None:
@@ -693,7 +713,7 @@ class CameraApp:
         self._save_settings(silent=True)
         if self.tracker:
             self.tracker.set_auto_zoom(on)
-        self._notify("zoom automatyczny włączony" if on else "zoom automatyczny wyłączony",
+        self._notify(t("app.notice_auto_zoom_on") if on else t("app.notice_auto_zoom_off"),
                      OK if on else MUTED)
 
     def _set_override(self, key: str, value: float) -> None:
@@ -711,7 +731,7 @@ class CameraApp:
         self.shot_dd.value = resolve(tr["profile"], {}).shot    # nowy profil = jego plan
         if self.tracker:
             self.tracker.set_profile(tr["profile"], {})
-        self._notify(f"profil: {tr['profile']} (nadpisania wyczyszczone)", OK)
+        self._notify(t("app.notice_profile_default", profile=tr["profile"]), OK)
 
     def _on_tracking_toggle(self, e) -> None:
         enabled = bool(e.control.value)
@@ -724,15 +744,15 @@ class CameraApp:
             return
         # Pole pod podglądem to jednorazowy komunikat o zdarzeniu - bieżący stan
         # (szukanie/śledzenie) pokazuje na żywo prawy panel.
-        self._notify("auto-tracking włączony" if enabled else "auto-tracking wyłączony",
+        self._notify(t("app.notice_tracking_on") if enabled else t("app.notice_tracking_off"),
                      OK if enabled else MUTED)
 
     def _on_search(self, _e) -> None:
         if self.tracker is None or not self.tracker.enabled:
-            self._notify("włącz auto-tracking, żeby szukać osoby", WARN)
+            self._notify(t("app.notice_enable_tracking_to_search"), WARN)
             return
         self.tracker.search_now()
-        self._notify("szukanie osoby uruchomione", OK)
+        self._notify(t("app.notice_search_started"), OK)
 
     def _on_preview_tap(self, e) -> None:
         """Kliknięcie w podgląd wybiera osobę pod kursorem (tracker liczy trafienie w swojej klatce)."""
@@ -742,12 +762,12 @@ class CameraApp:
         point = frame_point(*self._overlay_size, tracker.state.frame_size,
                             e.local_position.x, e.local_position.y)
         if point is not None and tracker.select_at(*point):
-            self._notify("śledzę wskazaną osobę", OK)
+            self._notify(t("app.notice_tracking_selected"), OK)
 
     def _on_auto_pick(self, _e) -> None:
         if self.tracker is not None:
             self.tracker.clear_selection()
-            self._notify("śledzę automatycznie (największa osoba)", MUTED)
+            self._notify(t("app.notice_tracking_auto"), MUTED)
 
     def _on_hold_change(self, e) -> None:
         value = float(e.control.value)
@@ -764,7 +784,7 @@ class CameraApp:
         pan, tilt = self.tracker.set_home()
         self.settings["tracking"]["home"] = [pan, tilt]
         self._save_settings(silent=True)
-        self._notify(f"dom: pan {pan / 3600:+.1f}°, tilt {tilt / 3600:+.1f}°", OK)
+        self._notify(t("app.notice_home_set", pan=pan / 3600, tilt=tilt / 3600), OK)
 
     def _on_device_change(self, e) -> None:
         self.settings["device"] = e.control.value or "/dev/video0"
@@ -784,14 +804,14 @@ class CameraApp:
 
     def _on_connect(self, _e) -> None:
         if self.engine.open_camera() is None:
-            self._notify("kamera podłączona", OK)
+            self._notify(t("app.notice_camera_connected"), OK)
         self._sync_connection()
         self._save_settings(silent=True)
 
     def _on_privacy_change(self, e) -> None:
         on = bool(e.control.value)
         self.engine.set_privacy(on)
-        self._notify("prywatność włączona - uczestnicy widzą planszę" if on else "prywatność wyłączona",
+        self._notify(t("app.notice_privacy_on") if on else t("app.notice_privacy_off"),
                      WARN if on else OK)
 
     # --- presety ---
@@ -803,10 +823,10 @@ class CameraApp:
     def _on_preset_save(self, _e) -> None:
         name = (self.preset_name.value or "").strip()
         if not name:
-            self._notify("podaj nazwę presetu", WARN)
+            self._notify(t("app.notice_preset_name_needed"), WARN)
             return
         if not self.controls:
-            self._notify("brak połączenia z kamerą", ERROR)
+            self._notify(t("app.notice_no_camera"), ERROR)
             return
         preset = Preset(
             name=name,
@@ -818,17 +838,17 @@ class CameraApp:
         self._refresh_preset_options()
         self.preset_dd.value = name
         self.preset_name.value = ""
-        self._notify(f"zapisano preset {name!r}", OK)
+        self._notify(t("app.notice_preset_saved", name=name), OK)
         self._refresh_widgets()
 
     def _on_preset_load(self, _e) -> None:
         name = self.preset_dd.value
         preset = self.store.preset(name) if name else None
         if preset is None:
-            self._notify("wybierz preset do wczytania", WARN)
+            self._notify(t("app.notice_preset_pick_load"), WARN)
             return
         if self.tracker and self.tracker.enabled:
-            self._notify("wyłącz auto-tracking przed wczytaniem presetu", WARN)
+            self._notify(t("app.notice_preset_tracking_off"), WARN)
             return
         for cid, value in ((CID_ZOOM_ABSOLUTE, preset.zoom), (CID_FOCUS_ABSOLUTE, preset.focus),
                            (CID_FOCUS_AUTO, preset.focus_auto)):
@@ -838,33 +858,33 @@ class CameraApp:
             self.tracker.move_to(pan=preset.pan, tilt=preset.tilt)   # przez wykonawcę - model głowicy wie o ruchu
         self._sync_from_device()
         self._refresh_widgets()
-        self._notify(f"wczytano preset {name!r}", OK)
+        self._notify(t("app.notice_preset_loaded", name=name), OK)
 
     def _on_preset_delete(self, _e) -> None:
         name = self.preset_dd.value
         if not name:
-            self._notify("wybierz preset do usunięcia", WARN)
+            self._notify(t("app.notice_preset_pick_delete"), WARN)
             return
         if self.store.delete_preset(name):
             self._refresh_preset_options()
             self.preset_dd.value = None
-            self._notify(f"usunięto preset {name!r}", OK)
+            self._notify(t("app.notice_preset_deleted", name=name), OK)
             self._refresh_widgets()
 
     # --- akcje ---
 
     def _on_snapshot(self, _e) -> None:
         if self._last_jpg is None:
-            self._notify("brak klatki do zapisania", WARN)
+            self._notify(t("app.notice_no_frame"), WARN)
             return
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         try:
             path = snapshots_dir() / f"zrzut-{stamp}.jpg"
             path.write_bytes(self._last_jpg)
         except OSError as exc:
-            self._notify(f"nie udało się zapisać: {exc}", ERROR)
+            self._notify(t("app.notice_snapshot_failed", error=exc), ERROR)
             return
-        self._notify(f"zapisano {path}", OK)
+        self._notify(t("app.notice_snapshot_saved", path=path), OK)
 
     def _on_reset_image(self, _e) -> None:
         if not self.controls:
@@ -878,16 +898,16 @@ class CameraApp:
                 self._write(cid, ctrl.default)
         self._sync_from_device()
         self._refresh_widgets()
-        self._notify("kontrolki obrazu wrócą do wartości domyślnych", OK)
+        self._notify(t("app.notice_image_reset"), OK)
 
     def _save_settings(self, silent: bool = False) -> None:
         try:
             self.store.save()
         except OSError as exc:
-            self._notify(f"nie zapisano konfiguracji: {exc}", ERROR)
+            self._notify(t("app.notice_settings_save_failed", error=exc), ERROR)
             return
         if not silent:
-            self._notify("ustawienia zapisane w config.json", OK)
+            self._notify(t("app.notice_settings_saved"), OK)
 
     def _notify(self, message: str, color: str = MUTED) -> None:
         self.notice.value = message
@@ -918,7 +938,7 @@ class CameraApp:
         (kamera zwolniona przez inny program) albo zmienił komunikat błędu."""
         self._shown = (self.engine.tracker, self.engine.error)
         if self.engine.error or self.engine.tracker is None:
-            self.connection_status.value = render(self.engine.error) or "kamera niepodłączona"
+            self.connection_status.value = render(self.engine.error) or t("app.camera_disconnected")
             self.connection_status.color = ERROR
             self.preview_placeholder.visible = True
         else:
@@ -963,7 +983,7 @@ class CameraApp:
         if e.type == ft.WindowEventType.CLOSE:
             if self.tray.alive:
                 self.hide_window()
-                self._notify("EagleEye działa dalej w zasobniku", MUTED)
+                self._notify(t("app.notice_tray_running"), MUTED)
             else:
                 self.quit_app()
 
@@ -974,7 +994,7 @@ class CameraApp:
         self._overlay_drawn = None
         self.preview.visible = True
         self.preview_placeholder.visible = False
-        self.preview_badge.value = "PRYWATNOŚĆ — uczestnicy widzą tę planszę"
+        self.preview_badge.value = t("app.privacy_preview")
         try:
             self.preview_stack.update()
         except Exception:
@@ -1085,39 +1105,25 @@ class CameraApp:
             try:
                 # Stan wirtualnej kamery i prywatność aktualizujemy też bez kamery -
                 # plansza i przełącznik muszą działać, gdy urządzenia nie ma.
-                self.vcam_status.value = f"stan: {render(self.engine.vcam.status)}"
+                self.vcam_status.value = t("app.vcam_state", state=render(self.engine.vcam.status))
                 self.privacy_sw.value = self.engine.privacy.active
                 if (self.engine.tracker, self.engine.error) != self._shown:
                     self._sync_connection()
                     if self.engine.tracker is not None:
-                        self._notify("kamera podłączona", OK)
+                        self._notify(t("app.notice_camera_connected"), OK)
                 if self.controls is None:
                     self.page.update()
                     continue
                 self._sync_from_device()
                 state = self.tracker.state if self.tracker else None
-                parts = [f"kontrolki: {len(self.controls.list_controls())}"]
+                parts = [t("app.footer_controls", count=len(self.controls.list_controls()))]
                 if self.stream:
-                    parts.append(f"klatek: {self.stream.dropped} odrzuconych")
+                    parts.append(t("app.footer_dropped", count=self.stream.dropped))
                 self.footer.value = "  •  ".join(parts)
                 if state is not None:
-                    target = (f"{state.target.source} {state.target.score:.2f} "
-                              f"@ {int(state.target.x)},{int(state.target.y)}" if state.target else "brak")
-                    self.track_detail.value = (
-                        f"tryb     : {state.mode}   pan: {state.pan_state}   tilt: {state.tilt_state}\n"
-                        f"cel      : {target}\n"
-                        f"kadr     : {state.side or '-'}  plan {state.shot or '-'}  "
-                        f"yaw {'-' if state.yaw is None else f'{state.yaw:+.2f}'}  "
-                        f"zoom→ {'-' if state.zoom_goal is None else int(state.zoom_goal)}  "
-                        f"({'auto' if state.auto_zoom else 'ręczny'})\n"
-                        f"głowica  : pan {state.pan / 3600:+6.1f}°  tilt {state.tilt / 3600:+6.1f}°\n"
-                        f"detekcja : {state.detection_ms:5.1f} ms   pętla: {state.loop_ms:5.1f} ms\n"
-                        f"tempo    : {state.fps:4.1f} Hz   ruchów: {state.moves}\n"
-                        f"detektor : {state.detector}"
-                    )
+                    self.track_detail.value = _diag_text(state)
                     self.track_status.value = render(state.message)
-                    self.select_status.value = (render(selection_text(state))
-                                                or "kliknij osobę w podglądzie, żeby śledzić tylko ją")
+                    self.select_status.value = render(selection_text(state) or msg("app.select_hint"))
                     self.auto_pick_btn.disabled = state.selection == "auto"
                     if self.track_sw.value != state.enabled:
                         self.track_sw.value = state.enabled      # tracker mógł się sam wyłączyć (błąd, odłączenie)
@@ -1126,7 +1132,7 @@ class CameraApp:
                         self.auto_zoom_sw.value = False
                         self.settings["tracking"]["auto_zoom"] = False
                         self._save_settings(silent=True)
-                        self._notify("zoom zmieniony ręcznie - zoom automatyczny wyłączony", WARN)
+                        self._notify(t("app.notice_zoom_manual_off"), WARN)
                     azimuth = self.tracker.last_azimuth
                     stored = self.settings["tracking"]["last_azimuth"]
                     if azimuth and (not stored or abs(azimuth[0] - stored[0]) > 3600):
@@ -1134,11 +1140,11 @@ class CameraApp:
                         self._save_settings(silent=True)
                 self.page.update()
             except Exception as exc:
-                self._notify(f"błąd pętli statusu: {exc}", ERROR)
+                self._notify(t("app.notice_status_loop_error", error=exc), ERROR)
 
 
 def main(page: ft.Page, engine: Engine, tray: TrayProcess) -> None:
-    page.title = "EagleEye — sterowanie kamerą"
+    page.title = t("app.title")
     page.theme_mode = ft.ThemeMode.DARK
     try:
         page.window.width = 1420
