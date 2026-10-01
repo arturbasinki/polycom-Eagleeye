@@ -186,6 +186,7 @@ class CameraApp:
                                         resize_interval=100, on_resize=self._on_overlay_resize)
         self._overlay_size = (0.0, 0.0)
         self._overlay_drawn: tuple | None = None     # (tracker state, size) drawn last
+        self.preview_badge = ft.Text("", color=TEXT, size=12, font_family="monospace")
         self.preview_stack = ft.Stack(
             expand=True,
             controls=[
@@ -196,11 +197,10 @@ class CameraApp:
                     right=14, top=12,
                     padding=ft.Padding.symmetric(horizontal=10, vertical=6),
                     bgcolor="#000000aa", border_radius=8,
-                    content=ft.Text("", color=TEXT, size=12, font_family="monospace"),
+                    content=self.preview_badge,
                 ),
             ],
         )
-        self.preview_badge = self.preview_stack.controls[2].content
         # The same slate the participants see - the lens is pointing at the floor then anyway.
         self._privacy_card = cv2.imencode(".jpg", render_card(*card_texts(PRIVACY_CARD)))[1].tobytes()
         self._privacy_shown = False
@@ -1030,6 +1030,16 @@ class CameraApp:
             pass
 
     async def _preview_loop(self) -> None:
+        """Keeps the preview running: an error is logged and the loop restarts, because a dead
+        loop would leave the last picture (for example the privacy slate) frozen on screen."""
+        while not self.closing:
+            try:
+                await self._run_preview()
+            except Exception:
+                log.exception("preview loop failed - restarting it")
+                await asyncio.sleep(1.0)
+
+    async def _run_preview(self) -> None:
         """Passes frames to the Image control, with optional detection drawing."""
         while not self.closing:
             if self.hidden:                            # hidden window: we do not send frames to Flet
