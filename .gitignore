@@ -1,0 +1,32 @@
+# Środowisko i artefakty budowania
+.venv/
+__pycache__/
+*.pyc
+
+# Modele ONNX - pobierane skryptem z README (36 MB, nie trzymamy w repo)
+models/*.onnx
+
+# Obrazy referencyjne testów - dociągane automatycznie przy pierwszym uruchomieniu
+models/testdata/
+
+# Artefakty narzędzi pomocniczych
+.playwright-mcp/
+
+# Zrzuty klatek robione przyciskiem w aplikacji
+captures/zrzut-*.jpg
+
+# Nagrane sesje śledzenia (tools/replay_session.py)
+captures/sessions/
+
+# Pliki i katalogi z kropką (narzędzia, agenci, edytory) - poza samym .gitignore
+.*
+!.gitignore
+
+# Dokumentacja robocza (plany i specyfikacje) - nie jest potrzebna do uruchomienia
+docs/
+
+# Zrzuty z kamery i nagrania - zawierają wizerunek i wnętrze, nie publikujemy
+captures/
+
+# Zdjęcia sprzętu (numer seryjny egzemplarza)
+resources/

@@ -1,0 +1,38 @@
+{
+  "settings": {
+    "device": "/dev/video0",
+    "preview_width": 1920,
+    "preview_height": 1080,
+    "preview_fps": 15,
+    "overlay": true,
+    "dynamics": {
+      "vel_speed": 146409.713811415,
+      "vel_latency": 0.1656709859962575,
+      "vel_ramp": 0.30000800000561867,
+      "vel_decel": 0.05,
+      "abs_latency": 0.16664737099199556,
+      "abs_base": 0.40552816200275155,
+      "abs_speed": 243070.00787412105,
+      "zoom_latency": 0.142,
+      "zoom_base": 0.201,
+      "zoom_speed": 3069.5,
+      "tilt_abs_latency": 0.1,
+      "tilt_abs_base": 0.8,
+      "tilt_abs_speed": 239400.0,
+      "tilt_abs_nu": 0.7
+    },
+    "tracking": {
+      "profile": "rozmowa",
+      "overrides": {},
+      "use_gpu": true,
+      "invert_pan": false,
+      "invert_tilt": false,
+      "rate_hz": 15.0,
+      "home": null,
+      "last_azimuth": null,
+      "record": false,
+      "auto_zoom": true
+    }
+  },
+  "presets": []
+}
