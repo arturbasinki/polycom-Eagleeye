@@ -25,5 +25,16 @@
   "framing.side.center": "center",
   "framing.side.left": "left",
   "framing.side.right": "right",
-  "identity.selection_lost": "selected person vanished - tracking the nearest"
+  "identity.selection_lost": "selected person vanished - tracking the nearest",
+  "overlay.following": "following #{id}",
+  "overlay.searching": "searching… {seconds} s",
+  "selection.selected": "selected person: #{id}",
+  "selection.suspended": "selected person vanished - waiting {seconds} s",
+  "tracker.camera_lost": "camera disconnected: {error}",
+  "tracker.failed": "tracking error - turned off: {error}",
+  "tracker.gpu_fallback": "GPU detector failing - switched to CPU",
+  "tracker.identity_error": "person numbering error",
+  "tracker.no_frames": "no image from the camera - movement paused",
+  "tracker.off": "tracking off",
+  "tracker.on": "tracking on"
 }

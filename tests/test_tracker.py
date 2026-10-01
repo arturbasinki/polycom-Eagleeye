@@ -24,7 +24,7 @@ from runner import run  # noqa: E402
 
 from eagleeye.detectors import Detection  # noqa: E402
 from eagleeye.i18n import msg  # noqa: E402
-from eagleeye.tracker import SessionRecorder, Tracker, TrackerSettings, load_session  # noqa: E402
+from eagleeye.tracker import SessionRecorder, Tracker, TrackerSettings, TrackerState, load_session  # noqa: E402
 from eagleeye.v4l2 import CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_ZOOM_ABSOLUTE  # noqa: E402
 
 _ok, _buf = cv2.imencode(".jpg", np.full((360, 640, 3), 90, np.uint8))
@@ -93,7 +93,7 @@ def test_no_frames_stops_motion() -> None:
         speeds = ctl.writes_to(CID_PAN_SPEED)       # przed stop(), który też zeruje prędkość
     finally:
         tr.stop()
-    assert "brak obrazu" in tr.state.message
+    assert tr.state.message.key == "tracker.no_frames"
     assert speeds[-1] == 0
 
 
@@ -156,6 +156,11 @@ def test_state_is_a_new_snapshot_each_time() -> None:
     assert tr.state is not first and first.enabled is False
 
 
+def test_default_state_messages_are_data() -> None:
+    state = TrackerState()
+    assert state.message == msg("tracker.off") and state.note is None and state.selection_note is None
+
+
 def test_unexpected_error_stops_motion_and_keeps_thread_alive() -> None:
     ctl = FakeControls()
     tr = make(controls=ctl)
@@ -174,7 +179,7 @@ def test_unexpected_error_stops_motion_and_keeps_thread_alive() -> None:
     finally:
         tr.stop()
     assert speeds[-1] == 0, "ruch musi zostać zatrzymany"
-    assert not tr.enabled and "błąd śledzenia" in tr.state.message
+    assert not tr.enabled and tr.state.message.key == "tracker.failed"
     assert alive, "wątek musi przeżyć, żeby śledzenie dało się włączyć ponownie"
 
 
@@ -199,8 +204,8 @@ def test_position_and_tilt_min() -> None:
 def test_recorder_round_trip() -> None:
     directory = Path(tempfile.mkdtemp())
     rec = SessionRecorder.create(directory)
-    rec.write(1.25, (100.0, -50.0), [], "śledzenie")
-    rec.write(1.30, None, [], "utrata")
+    rec.write(1.25, (100.0, -50.0), [], "tracking")
+    rec.write(1.30, None, [], "lost")
     rec.close()
     rows = load_session(rec.path)
     assert rows[0]["world"] == [100.0, -50.0] and rows[1]["world"] is None
@@ -240,10 +245,10 @@ def test_set_auto_zoom_updates_director_and_state() -> None:
 def test_recorder_writes_framing_fields() -> None:
     directory = Path(tempfile.mkdtemp())
     rec = SessionRecorder.create(directory)
-    rec.write(1.0, (0.0, 0.0), [], "śledzenie", {"yaw": 0.4, "side": "lewy"})
+    rec.write(1.0, (0.0, 0.0), [], "tracking", {"yaw": 0.4, "side": "left"})
     rec.close()
     rows = load_session(rec.path)
-    assert rows[0]["yaw"] == 0.4 and rows[0]["side"] == "lewy"
+    assert rows[0]["yaw"] == 0.4 and rows[0]["side"] == "left"
 
 
 
@@ -330,7 +335,8 @@ def test_identity_error_returns_to_auto_and_keeps_running() -> None:
         assert tr.select_at(220, 80)
         assert _wait_until(lambda: tr.state.selection == "selected")
         fake.fail_observation = True                     # numeracja rzuca przy wybranej osobie
-        assert _wait_until(lambda: tr.state.selection == "auto" and tr.state.selection_note != "")
+        assert _wait_until(lambda: tr.state.selection == "auto"
+                           and tr.state.selection_note == msg("tracker.identity_error"))
         assert tr.enabled and tr.state.enabled
     finally:
         tr.stop()

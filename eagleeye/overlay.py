@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from .framing import GOLDEN
+from .i18n import Message, msg, t
 from .identity import SELECTED, SUSPENDED
 from .tracker import TrackerState
 
@@ -75,12 +76,12 @@ def frame_point(box_w: float, box_h: float, frame_size: tuple[int, int],
     return (fx, fy) if 0 <= fx < sw and 0 <= fy < sh else None
 
 
-def selection_text(state: TrackerState) -> str:
-    """Jednolinijkowy opis wyboru osoby do okna."""
+def selection_text(state: TrackerState) -> Message | None:
+    """One-line description of the person selection for the window (a message, or None)."""
     if state.selection == SELECTED:
-        return f"wybrana osoba: #{state.selected_id}"
+        return msg("selection.selected", id=state.selected_id)
     if state.selection == SUSPENDED:
-        return f"wybrana osoba zniknęła - czekam {state.selection_left:.0f} s"
+        return msg("selection.suspended", seconds=f"{state.selection_left:.0f}")
     return state.selection_note
 
 
@@ -91,9 +92,9 @@ def _selection_shapes(state: TrackerState, k: float, ox: float, oy: float) -> li
     x, y, w, h = info.box
     if state.selection == SUSPENDED:
         return [Shape("rect", ox + x * k, oy + y * k, w * k, h * k, color=_hex(COLOR_SUSPENDED),
-                      stroke=3, label=f"szukam… {state.selection_left:.0f} s")]
+                      stroke=3, label=t("overlay.searching", seconds=f"{state.selection_left:.0f}"))]
     return [Shape("rect", ox + x * k, oy + y * k, w * k, h * k, color=_hex(COLOR_SELECTED),
-                  stroke=4, label=f"śledzę #{info.id}")]
+                  stroke=4, label=t("overlay.following", id=info.id))]
 
 
 def overlay_shapes(state: TrackerState, box_w: float, box_h: float) -> list[Shape]:

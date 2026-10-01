@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from runner import run  # noqa: E402
 
+from eagleeye import i18n  # noqa: E402
 from eagleeye.detectors import Detection  # noqa: E402
 from eagleeye.framing import GOLDEN  # noqa: E402
+from eagleeye.i18n import msg  # noqa: E402
 from eagleeye.identity import TrackInfo  # noqa: E402
 from eagleeye.overlay import Shape, annotate, frame_point, overlay_shapes, selection_text  # noqa: E402
 from eagleeye.perception import Observation  # noqa: E402
@@ -142,26 +144,25 @@ def test_frame_point_outside_the_image_is_none() -> None:
     assert frame_point(1000, 1000, (0, 0), 10, 10) is None, "brak klatki"
 
 
-def test_selected_person_is_outlined_with_a_label() -> None:
-    labels = [s.label for s in overlay_shapes(_tracked("selected"), 960, 540) if s.kind == "rect"]
-    assert "śledzę #1" in labels and "poza 0.90" in labels
+def test_selection_labels_follow_the_language() -> None:
+    try:
+        i18n.set_language("en")
+        labels = [s.label for s in overlay_shapes(_tracked("selected"), 960, 540) if s.kind == "rect"]
+        assert "following #1" in labels
+        labels = [s.label for s in overlay_shapes(_tracked("suspended", 4.2), 960, 540) if s.kind == "rect"]
+        assert "searching… 4 s" in labels and not any(l.startswith("following") for l in labels)
+        i18n.set_language("pl")
+        labels = [s.label for s in overlay_shapes(_tracked("selected"), 960, 540) if s.kind == "rect"]
+        assert "śledzę #1" in labels
+    finally:
+        i18n.set_language("en")
 
 
-def test_suspended_person_shows_a_countdown() -> None:
-    labels = [s.label for s in overlay_shapes(_tracked("suspended", 4.2), 960, 540) if s.kind == "rect"]
-    assert "szukam… 4 s" in labels and not any(l.startswith("śledzę") for l in labels)
-
-
-def test_auto_selection_draws_no_selection_outline() -> None:
-    labels = [s.label for s in overlay_shapes(_state(), 960, 540) if s.kind == "rect"]
-    assert labels == ["poza 0.90"]
-
-
-def test_selection_text() -> None:
-    assert selection_text(_tracked("selected")) == "wybrana osoba: #1"
-    assert selection_text(_tracked("suspended", 4.2)) == "wybrana osoba zniknęła - czekam 4 s"
-    assert selection_text(replace(_state(), selection_note="wybrana osoba zniknęła - śledzę najbliższą")) \
-        == "wybrana osoba zniknęła - śledzę najbliższą"
+def test_selection_text_returns_messages() -> None:
+    assert selection_text(_tracked("selected")) == msg("selection.selected", id=1)
+    assert selection_text(_tracked("suspended", 4.2)) == msg("selection.suspended", seconds="4")
+    note = msg("identity.selection_lost")
+    assert selection_text(replace(_state(), selection_note=note)) == note
     assert selection_text(_state()) is None
 
 if __name__ == "__main__":

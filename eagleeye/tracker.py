@@ -27,7 +27,7 @@ from .detectors import Detection, decode_mjpeg_scaled
 from .director import Command
 from .framing import GOLDEN, SIDE_X, shot_for
 from .head_model import Dynamics
-from .i18n import Message
+from .i18n import Message, msg
 from .identity import AUTO, PersonTracker, TargetSelection, TrackInfo, track_at, track_infos
 from .perception import Observation, default_perception
 from .profiles import resolve
@@ -67,7 +67,7 @@ class TrackerState:
     pan_state: str = ""
     tilt_state: str = ""
     note: Message | None = None
-    message: str = "śledzenie wyłączone"
+    message: Message = field(default_factory=lambda: msg("tracker.off"))
     detections: tuple[Detection, ...] = ()
     target: Observation | None = None
     frame_size: tuple[int, int] = (0, 0)
@@ -151,7 +151,7 @@ class Tracker:
         self._det_errors = 0
         self._moves = 0
         self._recorder: SessionRecorder | None = None
-        self._extra_note = ""
+        self._extra_note = None
         self._people = PersonTracker()
         self._selection = TargetSelection(settings.select_hold_s)
         self._sel_lock = threading.Lock()       # osobno od _lock: wybór klika wątek UI, liczy wątek pętli
@@ -199,7 +199,7 @@ class Tracker:
                 self._reset_identity()
                 self._close_recorder()
             self._enabled = on
-        self._publish(enabled=on, message="śledzenie włączone" if on else "śledzenie wyłączone")
+        self._publish(enabled=on, message=msg("tracker.on") if on else msg("tracker.off"))
 
     def set_record(self, on: bool, directory: Path | None = None) -> None:
         """Włącza/wyłącza zapis sesji od razu - także w trakcie śledzenia."""
@@ -369,7 +369,7 @@ class Tracker:
             with self._sel_lock:
                 self._people.reset()
                 self._selection.clear()
-            self._identity_view = {**IDENTITY_CLEARED, "selection_note": "błąd numeracji osób"}
+            self._identity_view = {**IDENTITY_CLEARED, "selection_note": msg("tracker.identity_error")}
         return obs
 
     def _perceive(self, frame, ts: float):
@@ -388,7 +388,7 @@ class Tracker:
                 self.settings.use_gpu = False
                 self._perception = None
                 self._det_errors = 0
-                self._extra_note = "detektor GPU zawodzi - przełączono na CPU"
+                self._extra_note = msg("tracker.gpu_fallback")
             return None, [], 0.0
 
     def _loop(self) -> None:
@@ -409,7 +409,7 @@ class Tracker:
                             self.core.actuator.stop_all(now)
                         except V4L2Error:
                             pass
-                    self._publish(message="brak obrazu z kamery - ruch wstrzymany")
+                    self._publish(message=msg("tracker.no_frames"))
                 continue
             last_id, last_frame_at = fid, now
             frame_age_ms = (now - ts) * 1000.0 if ts else 0.0
@@ -438,7 +438,7 @@ class Tracker:
                                               self.core.director.status.mode, self._framing_row())
             except V4L2Error as exc:
                 self._enabled = False
-                self._publish(enabled=False, message=f"kamera odłączona: {exc}")
+                self._publish(enabled=False, message=msg("tracker.camera_lost", error=str(exc)))
                 continue
             except Exception as exc:
                 # Błąd w logice śledzenia nie może po cichu zabić wątku: interfejs
@@ -453,7 +453,7 @@ class Tracker:
                         pass
                     self.core.director.reset()
                     self._close_recorder()
-                self._publish(enabled=False, message=f"błąd śledzenia - wyłączone: {exc}")
+                self._publish(enabled=False, message=msg("tracker.failed", error=str(exc)))
                 continue
             self._moves += sum(1 for c in cmds if c.kind == "abs")
             tick = time.perf_counter()
@@ -466,7 +466,7 @@ class Tracker:
             self._publish(
                 enabled=True, profile=profile.name, mode=status.mode, pan_state=status.pan,
                 tilt_state=status.tilt, note=status.note,
-                message=self._extra_note or status.note or status.mode,
+                message=self._extra_note or status.note or msg(f"director.mode.{status.mode}"),
                 detections=tuple(dets), target=obs, frame_size=(w, h), pan=pan, tilt=tilt,
                 zones=(profile.trigger_pan, profile.trigger_tilt),
                 aim=(SIDE_X[self.core.director.side.side], GOLDEN),

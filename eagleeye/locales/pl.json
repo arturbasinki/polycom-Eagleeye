@@ -25,5 +25,16 @@
   "framing.side.center": "środek",
   "framing.side.left": "lewy",
   "framing.side.right": "prawy",
-  "identity.selection_lost": "wybrana osoba zniknęła - śledzę najbliższą"
+  "identity.selection_lost": "wybrana osoba zniknęła - śledzę najbliższą",
+  "overlay.following": "śledzę #{id}",
+  "overlay.searching": "szukam… {seconds} s",
+  "selection.selected": "wybrana osoba: #{id}",
+  "selection.suspended": "wybrana osoba zniknęła - czekam {seconds} s",
+  "tracker.camera_lost": "kamera odłączona: {error}",
+  "tracker.failed": "błąd śledzenia - wyłączone: {error}",
+  "tracker.gpu_fallback": "detektor GPU zawodzi - przełączono na CPU",
+  "tracker.identity_error": "błąd numeracji osób",
+  "tracker.no_frames": "brak obrazu z kamery - ruch wstrzymany",
+  "tracker.off": "śledzenie wyłączone",
+  "tracker.on": "śledzenie włączone"
 }
