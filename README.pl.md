@@ -139,7 +139,7 @@ jeśli dioda linku nie świeci, prąd nie dochodzi do kamery.
 ## Instalacja
 
 ```bash
-git clone https://github.com/<twoj-uzytkownik>/polycom-Eagleeye.git
+git clone https://github.com/arturbasinki/polycom-Eagleeye.git
 cd polycom-Eagleeye
 ./install.sh
 ```

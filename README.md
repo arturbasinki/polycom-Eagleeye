@@ -150,7 +150,7 @@ Requires a Debian/Ubuntu-like system with systemd, Python 3, and ideally an NVID
 (without one the pose model runs on the CPU at roughly 13–14 Hz instead of 15 Hz+).
 
 ```bash
-git clone https://github.com/<your-user>/polycom-Eagleeye.git
+git clone https://github.com/arturbasinki/polycom-Eagleeye.git
 cd polycom-Eagleeye
 ./install.sh            # ./install.sh --dry-run shows the steps without doing them
 ```
