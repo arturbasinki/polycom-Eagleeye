@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -360,6 +361,57 @@ def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
         assert _wait_until(lambda: len(tr.state.tracks) == 3)
     finally:
         tr.stop()
+
+class Detecting:
+    """Perception double that also answers detect() and notices overlapping calls."""
+
+    last_ms = 0.0
+    description = "fake"
+
+    def __init__(self) -> None:
+        self.busy = False
+        self.overlaps = 0
+        self.calls = 0
+
+    def observe(self, frame, t, previous):
+        return None, []
+
+    def detect(self, frame):
+        if self.busy:
+            self.overlaps += 1
+        self.busy = True
+        time.sleep(0.01)
+        self.calls += 1
+        self.busy = False
+        return [Detection(10, 10, 20, 40, 0.9, "pose")]
+
+
+def test_detect_once_creates_the_detector_lazily_and_reuses_it() -> None:
+    created: list[Detecting] = []
+
+    def factory(gpu):
+        created.append(Detecting())
+        return created[-1]
+
+    tr = make(factory=factory)
+    frame = np.zeros((36, 64, 3), np.uint8)
+    assert created == []
+    assert len(tr.detect_once(frame)) == 1 and len(created) == 1
+    tr.detect_once(frame)
+    assert len(created) == 1 and created[0].calls == 2
+
+
+def test_detect_once_takes_turns_with_other_threads() -> None:
+    det = Detecting()
+    tr = make(factory=lambda gpu: det)
+    frame = np.zeros((36, 64, 3), np.uint8)
+    threads = [threading.Thread(target=tr.detect_once, args=(frame,)) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert det.calls == 6 and det.overlaps == 0
+
 
 if __name__ == "__main__":
     run(globals(), "Tracker thread")

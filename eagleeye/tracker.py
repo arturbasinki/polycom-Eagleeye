@@ -143,6 +143,7 @@ class Tracker:
         self.core.director.auto_zoom = settings.auto_zoom
         self.core.director.reset()
         self._perception = None
+        self._detect_lock = threading.Lock()      # the tracking loop and detect_once share one detector
         self._lock = threading.RLock()
         self._state = TrackerState(auto_zoom=settings.auto_zoom)
         self._enabled = False
@@ -372,21 +373,35 @@ class Tracker:
             self._identity_view = {**IDENTITY_CLEARED, "selection_note": msg("tracker.identity_error")}
         return obs
 
+    def _ensure_perception(self):
+        """The detector, created on first use. Callers hold ``_detect_lock``."""
+        if self._perception is None:
+            self._perception = self._factory(self.settings.use_gpu)
+        return self._perception
+
+    def detect_once(self, frame_bgr) -> list[Detection]:
+        """One detection outside the tracking loop (light correction). While tracking is off the loop
+        does not detect, so the detector may not exist yet - it is created here. The lock makes the
+        loop and this call take turns on the one detector."""
+        with self._detect_lock:
+            return self._ensure_perception().detect(frame_bgr)
+
     def _perceive(self, frame, ts: float):
         try:
-            if self._perception is None:
-                self._perception = self._factory(self.settings.use_gpu)
             h, w = frame.shape[:2]
-            obs, dets = self._perception.observe(frame, ts, self._previous_point(w, h))
+            with self._detect_lock:
+                perception = self._ensure_perception()
+                obs, dets = perception.observe(frame, ts, self._previous_point(w, h))
             obs = self._apply_identity(frame, ts, dets, obs, w, h)
             self._det_errors = 0
-            return obs, dets, self._perception.last_ms
+            return obs, dets, perception.last_ms
         except Exception as exc:
             self._det_errors += 1
             log.warning("detector error (%d in a row): %s", self._det_errors, exc)
             if self._det_errors >= DETECTOR_FAILURES_TO_CPU and self.settings.use_gpu:
                 self.settings.use_gpu = False
-                self._perception = None
+                with self._detect_lock:
+                    self._perception = None
                 self._det_errors = 0
                 self._extra_note = msg("tracker.gpu_fallback")
             return None, [], 0.0

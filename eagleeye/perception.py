@@ -102,6 +102,10 @@ class Perception:
     def description(self) -> str:
         return f"{self.pose.name}: {self.pose.backend}"
 
+    def detect(self, frame_bgr) -> list[Detection]:
+        """Everyone in ``frame_bgr``, with no target selection - for one-off use outside the tracking loop."""
+        return self.pose.detect(frame_bgr)
+
     def observe(self, frame_bgr, t: float,
                 previous: tuple[float, float] | None) -> tuple[Observation | None, list[Detection]]:
         dets = self.pose.detect(frame_bgr)
