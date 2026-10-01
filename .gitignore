@@ -21,3 +21,6 @@ captures/
 
 # Photos of the hardware (serial number of the author's unit)
 resources/
+
+# Session marker left in the working directory by an editor tool
+:memory:.ses
