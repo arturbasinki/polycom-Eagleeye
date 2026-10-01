@@ -13,9 +13,12 @@ import tempfile
 import time
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fakes import FakeCameraStream, FakeControls, TwoPeople  # noqa: E402
+from fakes import FakeCameraStream, FakeControls, TwoPeople, face_scene  # noqa: E402
 from runner import run  # noqa: E402
 
 from eagleeye import i18n  # noqa: E402
@@ -41,6 +44,7 @@ class FakeVcam:
         self.status = msg("vcam.status.running")
         self.running = False
         self.refreshed = 0
+        self.tone = None
 
     def set_source(self, stream) -> None:
         self.source = stream
@@ -56,6 +60,9 @@ class FakeVcam:
 
     def refresh_language(self) -> None:
         self.refreshed += 1
+
+    def set_tone(self, lut) -> None:
+        self.tone = lut
 
 
 def make_engine(controls_factory=None, stream_factory=FakeCameraStream, perception=NoPerson, **kwargs):
@@ -400,6 +407,116 @@ def test_command_errors_carry_a_message() -> None:
         assert exc.message == msg("engine.error.no_camera")
     finally:
         engine.shutdown()
+
+
+class LightPerception:
+    """Perception double for the light correction: fixed detections, optional failure."""
+
+    last_ms = 0.0
+    description = "fake"
+
+    def __init__(self, dets, fail: bool = False) -> None:
+        self.dets = dets
+        self.fail = fail
+
+    def observe(self, frame, t, previous):
+        return None, list(self.dets)
+
+    def detect(self, frame):
+        if self.fail:
+            raise RuntimeError("detector crashed")
+        return list(self.dets)
+
+
+def light_engine(skin_y: int, dets=None, fail: bool = False):
+    frame, det = face_scene(skin_y)
+    ok, buf = cv2.imencode(".jpg", frame)
+    jpg = buf.tobytes()
+
+    class Stream(FakeCameraStream):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.jpg = jpg
+
+    people = [det] if dets is None else dets
+    return make_engine(stream_factory=Stream, perception=lambda: LightPerception(people, fail))
+
+
+def test_correct_light_sets_the_tone_table_on_the_virtual_camera() -> None:
+    engine, _ = light_engine(40)
+    engine.start()
+    try:
+        result = engine.correct_light()
+        assert result.status == "ok" and engine.light_active
+        assert np.array_equal(engine.vcam.tone, result.lut) and engine.light_lut is not None
+    finally:
+        engine.shutdown()
+
+
+def test_correct_light_on_a_well_lit_face_clears_an_existing_table() -> None:
+    engine, _ = light_engine(120)
+    engine.start()
+    try:
+        table = np.arange(256, dtype=np.uint8)
+        engine._light_lut = table
+        engine.vcam.set_tone(table)
+        assert engine.correct_light().status == "well_lit"
+        assert not engine.light_active and engine.vcam.tone is None
+    finally:
+        engine.shutdown()
+
+
+def test_correct_light_failures_leave_the_table_unchanged() -> None:
+    engine, _ = light_engine(40, dets=[])
+    engine.start()
+    try:
+        assert engine.correct_light().status == "no_person" and engine.vcam.tone is None
+    finally:
+        engine.shutdown()
+    engine, _ = light_engine(40, fail=True)
+    engine.start()
+    try:
+        assert engine.correct_light().status == "failed" and engine.vcam.tone is None
+    finally:
+        engine.shutdown()
+    engine, _ = make_engine()
+    assert engine.correct_light().status == "no_frame"          # camera never opened
+
+
+def test_reset_light_clears_the_table() -> None:
+    engine, _ = light_engine(40)
+    engine.start()
+    try:
+        engine.correct_light()
+        engine.reset_light()
+        assert not engine.light_active and engine.vcam.tone is None and engine.light_lut is None
+    finally:
+        engine.shutdown()
+
+
+def test_light_survives_a_camera_reopen() -> None:
+    engine, _ = light_engine(40)
+    engine.start()
+    try:
+        engine.correct_light()
+        assert engine.open_camera() is None
+        assert engine.light_active and engine.vcam.tone is not None
+    finally:
+        engine.shutdown()
+
+
+def test_selected_point_scales_the_tracker_target_to_the_frame() -> None:
+    from types import SimpleNamespace
+
+    frame = np.zeros((360, 640, 3), np.uint8)
+    auto = SimpleNamespace(state=SimpleNamespace(selection="auto", target=SimpleNamespace(x=100.0, y=50.0),
+                                                 frame_size=(320, 180)))
+    assert Engine._selected_point(auto, frame) is None
+    chosen = SimpleNamespace(state=SimpleNamespace(selection="selected", target=SimpleNamespace(x=100.0, y=50.0),
+                                                   frame_size=(320, 180)))
+    assert Engine._selected_point(chosen, frame) == (200.0, 100.0)
+    suspended = SimpleNamespace(state=SimpleNamespace(selection="suspended", target=None, frame_size=(320, 180)))
+    assert Engine._selected_point(suspended, frame) is None
 
 
 if __name__ == "__main__":

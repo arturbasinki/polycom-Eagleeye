@@ -16,9 +16,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+import numpy as np
+
 from .config import Store
+from .detectors import decode_mjpeg
 from .head_model import dynamics_from_settings
 from .i18n import AUTO, LocalizedError, Message, available_languages, get_language, msg, set_language
+from .identity import AUTO as SELECTION_AUTO
+from .lightfix import FAILED, NO_FRAME, OK, WELL_LIT, LightResult, analyse
 from .privacy import Privacy
 from .profiles import DEFAULT_PROFILE, PROFILES
 from .tracker import Tracker, TrackerSettings
@@ -96,6 +101,7 @@ class Engine:
         self.vcam = vcam if vcam is not None else VirtualCamera()
         self.privacy = Privacy(self.vcam)
         self.ui = UiHooks()
+        self._light_lut: np.ndarray | None = None      # light-correction table; memory only, gone after a restart
         self._lock = threading.RLock()
         self._busy_retry_s = busy_retry_s
         self._holders = holders
@@ -231,6 +237,57 @@ class Engine:
             if on and self.privacy.active:
                 raise LocalizedError("engine.error.privacy_on")
             self.tracker.set_enabled(on)
+
+    # --- light correction ------------------------------------------------------
+
+    @property
+    def light_active(self) -> bool:
+        return self._light_lut is not None
+
+    @property
+    def light_lut(self) -> np.ndarray | None:
+        return self._light_lut
+
+    def correct_light(self) -> LightResult:
+        """Measure the face in the latest raw camera frame and apply the resulting table.
+
+        Runs on the caller's (worker) thread. A failure leaves the current table unchanged;
+        a face that is already well lit removes it."""
+        with self._lock:
+            stream, tracker = self.stream, self.tracker
+        if stream is None or tracker is None:
+            return LightResult(NO_FRAME)
+        try:
+            _, jpg, _ = stream.frame_timed(0, timeout=1.0)
+            frame = decode_mjpeg(jpg) if jpg is not None else None
+            if frame is None:
+                return LightResult(NO_FRAME)
+            result = analyse(frame, tracker.detect_once(frame), self._selected_point(tracker, frame))
+        except Exception:
+            log.exception("light correction failed")
+            return LightResult(FAILED)
+        if result.status == OK:
+            self._set_light(result.lut)
+        elif result.status == WELL_LIT:
+            self._set_light(None)
+        return result
+
+    def reset_light(self) -> None:
+        self._set_light(None)
+
+    def _set_light(self, lut: np.ndarray | None) -> None:
+        self._light_lut = lut
+        self.vcam.set_tone(lut)
+
+    @staticmethod
+    def _selected_point(tracker, frame) -> tuple[float, float] | None:
+        """Head point of the person the user selected, in ``frame`` pixels; None in automatic mode
+        or when the selected person is not visible. Both frames share the aspect ratio."""
+        state = tracker.state
+        if state.selection == SELECTION_AUTO or state.target is None or state.frame_size[0] <= 0:
+            return None
+        scale = frame.shape[1] / state.frame_size[0]
+        return state.target.x * scale, state.target.y * scale
 
     def command(self, cmd: str, arg: str | None = None) -> dict:
         if cmd == "show":
