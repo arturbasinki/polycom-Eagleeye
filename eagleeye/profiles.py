@@ -46,16 +46,17 @@ class Profile:
 # COMPOSITION_BAND/REFIT_DWELL). Kalibracyjne 0,05 (≈2°) było równe pasmu, więc re-fit
 # w pionie nie istniał, a każde kiwnięcie głową (±2°) po zwłoce 0,2 s w prezentacji
 # ruszało tilt - wprost na szczyt kiwnięcia, a drugi ruch wracał (sesja 20260926-011024).
-ROZMOWA = Profile("rozmowa", 0.15, 0.12, 0.8, False, False, deg(8), 2, 4.0,
-                  hold_during_moves=True, catch_up=False, shot="MCU")
-PREZENTACJA = Profile("prezentacja", 0.26, 0.12, 0.2, True, True, deg(8), 4, 1.5, shot="MS")
-PROFILES = {p.name: p for p in (ROZMOWA, PREZENTACJA)}
+TALK = Profile("talk", 0.15, 0.12, 0.8, False, False, deg(8), 2, 4.0,
+               hold_during_moves=True, catch_up=False, shot="MCU")
+PRESENTATION = Profile("presentation", 0.26, 0.12, 0.2, True, True, deg(8), 4, 1.5, shot="MS")
+PROFILES = {p.name: p for p in (TALK, PRESENTATION)}
+DEFAULT_PROFILE = "talk"
 TUNABLE = ("trigger_pan", "trigger_tilt", "dwell", "ladder_step_time",
            "shot", "side_enter", "side_exit", "side_dwell")
 
 
 def resolve(name: str, overrides: dict | None = None) -> Profile:
-    base = PROFILES.get(name, ROZMOWA)
+    base = PROFILES.get(name, PROFILES[DEFAULT_PROFILE])
     changes: dict = {}
     for key, value in (overrides or {}).items():
         if key == "shot":

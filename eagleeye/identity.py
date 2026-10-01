@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 
 from .detectors import Detection
+from .i18n import Message, msg
 from .perception import KEYPOINT_MIN_CONF, head_point
 
 ToWorld = Callable[[float, float], tuple[float, float]]
@@ -228,7 +229,7 @@ def track_at(infos: tuple[TrackInfo, ...], x: float, y: float) -> int | None:
     return best
 
 
-AUTO, SELECTED, SUSPENDED = "auto", "wybrana", "zawieszona"
+AUTO, SELECTED, SUSPENDED = "auto", "selected", "suspended"
 GAP_S = 0.5                      # tyle bez wykrycia wybrana jeszcze "widoczna" (ekstrapolacja)
 
 
@@ -239,14 +240,14 @@ class TargetSelection:
         self.hold_s = hold_s
         self.state = AUTO
         self.track_id: int | None = None
-        self.event = ""
+        self.event: Message | None = None
         self._seen = 0.0
 
     def select(self, track_id: int, t: float) -> None:
-        self.state, self.track_id, self.event, self._seen = SELECTED, track_id, "", t
+        self.state, self.track_id, self.event, self._seen = SELECTED, track_id, None, t
 
     def clear(self) -> None:
-        self.state, self.track_id, self.event = AUTO, None, ""
+        self.state, self.track_id, self.event = AUTO, None, None
 
     def remaining(self, t: float) -> float:
         if self.state != SUSPENDED:
@@ -264,7 +265,7 @@ class TargetSelection:
         gap = t - self._seen
         if gap > self.hold_s:
             self.state, self.track_id = AUTO, None
-            self.event = "wybrana osoba zniknęła - śledzę najbliższą"
+            self.event = msg("identity.selection_lost")
         elif gap > GAP_S:
             self.state = SUSPENDED
         return None

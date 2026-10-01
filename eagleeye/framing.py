@@ -26,7 +26,7 @@ GOLDEN = 0.382
 # słonecznym; +0,02 daje połowę klatki piersiowej.
 SHOTS = {"CU": 0.56, "MCU": 0.36, "MS": 0.19}
 AUTO_ZOOM_MAX = 4800.0      # powyżej 5000 krzywa zoomu niepewna, a detekcja słabnie
-CENTER, LEFT, RIGHT = "środek", "lewy", "prawy"
+CENTER, LEFT, RIGHT = "center", "left", "right"
 SIDE_X = {CENTER: 0.5, LEFT: GOLDEN, RIGHT: 1.0 - GOLDEN}
 
 

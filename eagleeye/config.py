@@ -24,7 +24,7 @@ DEFAULTS: dict = {
     # Pusty słownik = wartości ze spike'u; wypełnia tools/measure_dynamics.py --save.
     "dynamics": {},
     "tracking": {
-        "profile": "rozmowa",          # "rozmowa" albo "prezentacja"
+        "profile": "talk",             # "talk" or "presentation"
         "overrides": {},               # nadpisania pól profiles.TUNABLE z sekcji "zaawansowane"
         "use_gpu": True,
         "invert_pan": False,

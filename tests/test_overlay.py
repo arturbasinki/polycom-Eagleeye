@@ -121,7 +121,7 @@ def test_golden_grid_and_aim_point_are_drawn() -> None:
 
 
 def _tracked(selection: str, left: float = 0.0) -> TrackerState:
-    info = TrackInfo(1, (400, 250, 200, 280), (500.0, 300.0), selection == "wybrana")
+    info = TrackInfo(1, (400, 250, 200, 280), (500.0, 300.0), selection == "selected")
     return replace(_state(), tracks=(info,), selection=selection, selected_id=1, selection_left=left)
 
 
@@ -143,12 +143,12 @@ def test_frame_point_outside_the_image_is_none() -> None:
 
 
 def test_selected_person_is_outlined_with_a_label() -> None:
-    labels = [s.label for s in overlay_shapes(_tracked("wybrana"), 960, 540) if s.kind == "rect"]
+    labels = [s.label for s in overlay_shapes(_tracked("selected"), 960, 540) if s.kind == "rect"]
     assert "śledzę #1" in labels and "poza 0.90" in labels
 
 
 def test_suspended_person_shows_a_countdown() -> None:
-    labels = [s.label for s in overlay_shapes(_tracked("zawieszona", 4.2), 960, 540) if s.kind == "rect"]
+    labels = [s.label for s in overlay_shapes(_tracked("suspended", 4.2), 960, 540) if s.kind == "rect"]
     assert "szukam… 4 s" in labels and not any(l.startswith("śledzę") for l in labels)
 
 
@@ -158,11 +158,11 @@ def test_auto_selection_draws_no_selection_outline() -> None:
 
 
 def test_selection_text() -> None:
-    assert selection_text(_tracked("wybrana")) == "wybrana osoba: #1"
-    assert selection_text(_tracked("zawieszona", 4.2)) == "wybrana osoba zniknęła - czekam 4 s"
+    assert selection_text(_tracked("selected")) == "wybrana osoba: #1"
+    assert selection_text(_tracked("suspended", 4.2)) == "wybrana osoba zniknęła - czekam 4 s"
     assert selection_text(replace(_state(), selection_note="wybrana osoba zniknęła - śledzę najbliższą")) \
         == "wybrana osoba zniknęła - śledzę najbliższą"
-    assert selection_text(_state()) == ""
+    assert selection_text(_state()) is None
 
 if __name__ == "__main__":
     run(globals(), "Rysowanie wykryć")

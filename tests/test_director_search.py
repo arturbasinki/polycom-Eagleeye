@@ -13,11 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from runner import run  # noqa: E402
 
-from eagleeye.director import (CZEKANIE, RESCAN_AFTER, SEARCH_DWELL, SLEDZENIE,  # noqa: E402
-                               WORK_TILT_DEFAULT, Director, Limits)
+from eagleeye.director import (ALERT, BRAKING, FOLLOWING, IDLE, LOST, MOVING, RESCAN_AFTER,  # noqa: E402
+                               SEARCH_DWELL, SEARCHING, TRACKING, WAITING, WORK_TILT_DEFAULT,
+                               Director, Limits)
 from eagleeye.geometry import View, deg  # noqa: E402
 from eagleeye.head_model import Dynamics, HeadModel  # noqa: E402
-from eagleeye.profiles import PREZENTACJA, ROZMOWA  # noqa: E402
+from eagleeye.i18n import Message  # noqa: E402
+from eagleeye.profiles import PRESENTATION, TALK  # noqa: E402
 from eagleeye.search import startup_plan  # noqa: E402
 from eagleeye.target_filter import TargetEstimate  # noqa: E402
 
@@ -72,7 +74,7 @@ def visible_at(pan: float, tilt: float):
 
 
 def test_start_search_begins_at_last_azimuth() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.last_azimuth = (deg(30), 0.0)
     r.d.start_search(0.0, 0.0)
     r.run(DT, nobody)
@@ -82,7 +84,7 @@ def test_start_search_begins_at_last_azimuth() -> None:
 
 
 def test_search_visits_every_point_with_dwell() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.start_search(0.0, 0.0)
     r.run(90.0, nobody)
     pans = [(t, c.value) for t, c in r.log if c.kind == "abs" and c.axis == "pan"]
@@ -93,16 +95,16 @@ def test_search_visits_every_point_with_dwell() -> None:
 
 
 def test_search_stops_when_person_is_found() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.start_search(0.0, 0.0)
     r.run(20.0, visible_at(deg(60), WORK_TILT_DEFAULT))
     pans = [c.value for _, c in r.log if c.kind == "abs" and c.axis == "pan"]
     assert pans[:2] == [0.0, deg(60)] and len(pans) == 2
-    assert r.d.status.mode == SLEDZENIE
+    assert r.d.status.mode == TRACKING
 
 
 def test_search_zooms_out_and_restores_zoom_after_find() -> None:
-    r = Rig(ROZMOWA, zoom=1000.0)
+    r = Rig(TALK, zoom=1000.0)
     r.d.start_search(0.0, 1000.0)
     r.run(10.0, visible_at(0.0, WORK_TILT_DEFAULT))
     zooms = [c.value for _, c in r.log if c.kind == "zoom"]
@@ -110,19 +112,19 @@ def test_search_zooms_out_and_restores_zoom_after_find() -> None:
 
 
 def test_detection_from_before_arrival_is_ignored() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.start_search(0.0, 0.0)
     stale = TargetEstimate(0.0, WORK_TILT_DEFAULT, 0.0, 0.0, 0.0, -1.0)
     r.run(2.0, lambda t, rig: stale)
-    assert r.d.status.mode != SLEDZENIE
+    assert r.d.status.mode != TRACKING
 
 
 def test_exhausted_search_goes_home_and_rescans() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.home = (deg(10), deg(-3))
     r.d.start_search(0.0, 0.0)
     t = r.run(90.0, nobody)
-    assert r.d.status.mode == CZEKANIE
+    assert r.d.status.mode == WAITING
     home = [c.value for _, c in r.log if c.kind == "abs"][-2:]
     assert home == [deg(10), deg(-3)]
     before = len(r.log)
@@ -136,7 +138,7 @@ def tracked(r: Rig, pan: float, v_pan: float, seconds: float) -> float:
 
 
 def test_lost_at_edge_while_walking_catches_up() -> None:
-    r = Rig(PREZENTACJA)
+    r = Rig(PRESENTATION)
     last_pan = 0.45 * r.view().hfov
     t = r.run(0.5, lambda t, rig: TargetEstimate(last_pan, 0.0, deg(15), 0.0, t, t))
     r.log.clear()
@@ -149,7 +151,7 @@ def test_rozmowa_does_not_catch_up_but_waits_at_last_azimuth() -> None:
     """Sesja 20260923-020939: w chwili utraty prędkość filtra była bezwartościowa (luki
     w detekcji), więc doganianie strzelało 54-61° za daleko, powtarzało się, a dopiero
     powrót na ostatni azymut trafiał w osobę. W rozmowie od razu ostatni azymut."""
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     last_pan = 0.45 * r.view().hfov
     t = r.run(1.0, lambda t, rig: TargetEstimate(last_pan, 0.0, deg(15), 0.0, t, t))
     r.log.clear()
@@ -159,29 +161,29 @@ def test_rozmowa_does_not_catch_up_but_waits_at_last_azimuth() -> None:
 
 
 def test_lost_in_middle_goes_to_last_azimuth_then_zooms_out_later() -> None:
-    r = Rig(ROZMOWA, zoom=1000.0)
+    r = Rig(TALK, zoom=1000.0)
     t = tracked(r, 0.0, 0.0, 1.0)
     r.log.clear()
     t = r.run(1.0, nobody, t0=t)
     kinds = [(c.kind, c.axis) for _, c in r.log]
     assert ("abs", "pan") in kinds and ("zoom", "zoom") not in kinds, "krótka utrata nie oddala"
-    r.run(ROZMOWA.ladder_step_time + 1.0, nobody, t0=t)
+    r.run(TALK.ladder_step_time + 1.0, nobody, t0=t)
     assert [c.value for _, c in r.log if c.kind == "zoom"] == [0.0]
 
 
 def test_reacquire_with_auto_zoom_does_not_restore_old_zoom() -> None:
-    r = Rig(ROZMOWA, zoom=800.0)
+    r = Rig(TALK, zoom=800.0)
     r.d.auto_zoom = True
     t = tracked(r, 0.0, 0.0, 1.0)
     t = r.run(6.0, nobody, t0=t)
     r.log.clear()
     r.run(2.0, visible_at(0.0, 0.0), t0=t)
-    assert r.d.status.mode == SLEDZENIE
+    assert r.d.status.mode == TRACKING
     assert [c.value for _, c in r.log if c.kind == "zoom"] == []
 
 
 def test_rozmowa_stops_at_step_two() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     t = tracked(r, 0.0, 0.0, 1.0)
     r.log.clear()
     r.run(60.0, nobody, t0=t)
@@ -190,7 +192,7 @@ def test_rozmowa_stops_at_step_two() -> None:
 
 
 def test_prezentacja_runs_local_search_then_goes_home() -> None:
-    r = Rig(PREZENTACJA)
+    r = Rig(PRESENTATION)
     r.d.home = (deg(5), 0.0)
     t = tracked(r, 0.0, 0.0, 1.0)
     r.log.clear()
@@ -198,24 +200,24 @@ def test_prezentacja_runs_local_search_then_goes_home() -> None:
     pans = [c.value for _, c in r.log if c.kind == "abs" and c.axis == "pan"]
     hfov = r.view().hfov
     assert pans[-4:] == [0.0, hfov, -hfov, deg(5)]
-    assert r.d.status.mode == CZEKANIE and r.d.status.ladder == 4
+    assert r.d.status.mode == WAITING and r.d.status.ladder == 4
 
 
 def test_local_search_without_home_returns_to_last_azimuth() -> None:
     """Sesja 20260923-004030: bez presetu "dom" kamera została w ostatnim punkcie skanu
     lokalnego (-72° od miejsca utraty) i patrzyła w ścianę."""
-    r = Rig(PREZENTACJA)
+    r = Rig(PRESENTATION)
     t = tracked(r, deg(28), 0.0, 1.0)
     r.log.clear()
     r.run(30.0, nobody, t0=t)
     pans = [c.value for _, c in r.log if c.kind == "abs" and c.axis == "pan"]
     hfov = r.view().hfov
     assert pans[-4:] == [deg(28), deg(28) + hfov, deg(28) - hfov, deg(28)], pans
-    assert r.d.status.mode == CZEKANIE
+    assert r.d.status.mode == WAITING
 
 
 def test_waiting_after_local_search_rescans() -> None:
-    r = Rig(PREZENTACJA)
+    r = Rig(PRESENTATION)
     t = tracked(r, deg(28), 0.0, 1.0)
     t = r.run(30.0, nobody, t0=t)
     before = len(r.log)
@@ -224,24 +226,41 @@ def test_waiting_after_local_search_rescans() -> None:
 
 
 def test_person_returning_is_reacquired() -> None:
-    r = Rig(ROZMOWA, zoom=800.0)
+    r = Rig(TALK, zoom=800.0)
     t = tracked(r, 0.0, 0.0, 1.0)
     # Oddalenie przychodzi po dojeździe na ostatni azymut + ladder_step_time (przy
     # zmierzonej dynamice tiltu: 5,0 s) - czekamy dłużej, żeby było co przywracać.
     t = r.run(6.0, nobody, t0=t)
     r.log.clear()
     r.run(2.0, visible_at(0.0, 0.0), t0=t)
-    assert r.d.status.mode == SLEDZENIE
+    assert r.d.status.mode == TRACKING
     assert [c.value for _, c in r.log if c.kind == "zoom"] == [800.0]
 
 
 def test_reset_clears_search() -> None:
-    r = Rig(ROZMOWA)
+    r = Rig(TALK)
     r.d.start_search(0.0, 0.0)
     r.d.reset()
-    assert r.d.status.mode == CZEKANIE
+    assert r.d.status.mode == WAITING
     r.run(1.0, nobody)
     assert r.log == []
+
+
+def test_state_values_are_english_codes() -> None:
+    assert (TRACKING, SEARCHING, LOST, WAITING) == ("tracking", "searching", "lost", "waiting")
+    assert (IDLE, ALERT, MOVING, FOLLOWING, BRAKING) == ("idle", "alert", "moving", "following", "braking")
+
+
+def test_status_notes_are_messages_with_catalog_keys() -> None:
+    rig = Rig(TALK)
+    rig.d.start_search(0.0)
+    seen, t0 = [], 0.0
+    for _ in range(8):
+        t0 = rig.run(1.0, nobody, t0)
+        seen.append(rig.d.status.note)
+    notes = [n for n in seen if n is not None]
+    assert notes, "a running search must leave a note"
+    assert all(isinstance(n, Message) and n.key.startswith("director.note.") for n in notes)
 
 
 if __name__ == "__main__":

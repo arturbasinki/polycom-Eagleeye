@@ -21,7 +21,7 @@ from eagleeye.director import COMPOSITION_BAND, WORK_TILT_DEFAULT  # noqa: E402
 from eagleeye.framing import GOLDEN  # noqa: E402
 from eagleeye.geometry import View, deg  # noqa: E402
 from eagleeye.head_model import Dynamics  # noqa: E402
-from eagleeye.profiles import PREZENTACJA, ROZMOWA  # noqa: E402
+from eagleeye.profiles import PRESENTATION, TALK  # noqa: E402
 from eagleeye.sim import SimScene, simulate  # noqa: E402
 
 FRAME = (960, 540)
@@ -40,34 +40,34 @@ def report(name: str, r, profile) -> None:
 
 def test_rozmowa_sitting_with_small_moves() -> None:
     scene = SimScene(lambda t: (deg(2) * math.sin(2 * math.pi * t / 7),
-                                framed(ROZMOWA) + deg(1) * math.sin(2 * math.pi * t / 5)), frame=FRAME)
-    r = simulate(ROZMOWA, scene, 120.0)
-    report("siedzenie", r, ROZMOWA)
+                                framed(TALK) + deg(1) * math.sin(2 * math.pi * t / 5)), frame=FRAME)
+    r = simulate(TALK, scene, 120.0)
+    report("siedzenie", r, TALK)
     assert r.moves_per_min() <= 1.0
-    assert r.outside_fraction(ROZMOWA) < 0.05
+    assert r.outside_fraction(TALK) < 0.05
     assert r.interrupted == 0
 
 
 def test_rozmowa_detector_flicker_does_not_move_camera() -> None:
-    scene = SimScene(lambda t: (0.0, framed(ROZMOWA)), jump_every=10, jump_px=24.0, frame=FRAME)
-    r = simulate(ROZMOWA, scene, 60.0)
-    report("migotanie detektora", r, ROZMOWA)
+    scene = SimScene(lambda t: (0.0, framed(TALK)), jump_every=10, jump_px=24.0, frame=FRAME)
+    r = simulate(TALK, scene, 60.0)
+    report("migotanie detektora", r, TALK)
     assert r.moves_per_min() <= 1.0
 
 
 def test_rozmowa_lean_and_return() -> None:
-    scene = SimScene(lambda t: (deg(15) if 10.0 <= t < 40.0 else 0.0, framed(ROZMOWA)), frame=FRAME)
-    r = simulate(ROZMOWA, scene, 60.0)
-    report("odchylenie", r, ROZMOWA)
+    scene = SimScene(lambda t: (deg(15) if 10.0 <= t < 40.0 else 0.0, framed(TALK)), frame=FRAME)
+    r = simulate(TALK, scene, 60.0)
+    report("odchylenie", r, TALK)
     assert r.interrupted == 0
-    assert r.inside_at(ROZMOWA, 20.0) and r.inside_at(ROZMOWA, 55.0)
+    assert r.inside_at(TALK, 20.0) and r.inside_at(TALK, 55.0)
 
 
 def test_rozmowa_standing_up_is_followed_in_tilt() -> None:
-    scene = SimScene(lambda t: (0.0, framed(ROZMOWA) + (deg(15) if t >= 5.0 else 0.0)), frame=FRAME)
-    r = simulate(ROZMOWA, scene, 20.0)
-    report("wstawanie", r, ROZMOWA)
-    assert all(r.inside_at(ROZMOWA, t) for t in (9.5, 12.0, 19.0))
+    scene = SimScene(lambda t: (0.0, framed(TALK) + (deg(15) if t >= 5.0 else 0.0)), frame=FRAME)
+    r = simulate(TALK, scene, 20.0)
+    report("wstawanie", r, TALK)
+    assert all(r.inside_at(TALK, t) for t in (9.5, 12.0, 19.0))
 
 
 def walking(t: float) -> float:
@@ -84,45 +84,45 @@ def walking(t: float) -> float:
 
 
 def test_prezentacja_walking() -> None:
-    scene = SimScene(lambda t: (walking(t), framed(PREZENTACJA)), frame=FRAME)
-    r = simulate(PREZENTACJA, scene, 96.0, start_pan=-deg(40))
-    report("chodzenie", r, PREZENTACJA)
+    scene = SimScene(lambda t: (walking(t), framed(PRESENTATION)), frame=FRAME)
+    r = simulate(PRESENTATION, scene, 96.0, start_pan=-deg(40))
+    report("chodzenie", r, PRESENTATION)
     # Próg 0,15 był spełniony tylko na zgadywanej dynamice ze spike'u (domyślne Dynamics do
     # 2026-09-26). Na kalibracji tej kamery ten sam scenariusz daje 16-18% - także kod sprzed
     # przeglądu sterowania (f659650): napęd ciągły ma jedną prędkość ~40°/s, chód 20°/s
     # (README: "prezentacja" eksperymentalna). Próg pilnuje, żeby nie było gorzej.
-    assert r.outside_fraction(PREZENTACJA) < 0.20
+    assert r.outside_fraction(PRESENTATION) < 0.20
     assert r.interrupted_per_min() <= 2.0
     assert r.vel_starts > 0, "prezentacja powinna używać podążania"
 
 
 def test_startup_search_finds_person() -> None:
-    scene = SimScene(lambda t: (deg(100), framed(ROZMOWA, WORK_TILT_DEFAULT)), frame=FRAME)
-    r = simulate(ROZMOWA, scene, 20.0, search=True)
+    scene = SimScene(lambda t: (deg(100), framed(TALK, WORK_TILT_DEFAULT)), frame=FRAME)
+    r = simulate(TALK, scene, 20.0, search=True)
     print(f"    znaleziono po {r.found_at} s")
     assert r.found_at is not None and r.found_at < 12.0
 
 
 def test_fast_runner_is_caught_up() -> None:
     def path(t: float) -> tuple[float, float]:
-        return (deg(45) * min(t, 3.0), framed(PREZENTACJA))
-    r = simulate(PREZENTACJA, SimScene(path, frame=FRAME), 12.0)
-    report("ucieczka", r, PREZENTACJA)
-    assert r.inside_at(PREZENTACJA, 9.0)
+        return (deg(45) * min(t, 3.0), framed(PRESENTATION))
+    r = simulate(PRESENTATION, SimScene(path, frame=FRAME), 12.0)
+    report("ucieczka", r, PRESENTATION)
+    assert r.inside_at(PRESENTATION, 9.0)
 
 
 def test_rozmowa_person_leaves_frame() -> None:
-    scene = SimScene(lambda t: (0.0, framed(ROZMOWA)), present=lambda t: t < 10.0, frame=FRAME)
-    r = simulate(ROZMOWA, scene, 60.0)
+    scene = SimScene(lambda t: (0.0, framed(TALK)), present=lambda t: t < 10.0, frame=FRAME)
+    r = simulate(TALK, scene, 60.0)
     assert r.real_moves <= 2, "w rozmowie tylko krok 2 drabiny, bez skanowania"
 
 
 def test_model_mismatch_still_converges_and_reanchors() -> None:
     true = Dynamics(abs_speed=Dynamics().abs_speed * 0.85, abs_base=0.36, vel_speed=Dynamics().vel_speed * 0.85)
-    scene = SimScene(lambda t: (walking(t), framed(PREZENTACJA)), frame=FRAME)
-    r = simulate(PREZENTACJA, scene, 64.0, dyn_true=true, start_pan=-deg(40))
-    report("niedokładny model", r, PREZENTACJA)
-    assert r.outside_fraction(PREZENTACJA) < 0.20
+    scene = SimScene(lambda t: (walking(t), framed(PRESENTATION)), frame=FRAME)
+    r = simulate(PRESENTATION, scene, 64.0, dyn_true=true, start_pan=-deg(40))
+    report("niedokładny model", r, PRESENTATION)
+    assert r.outside_fraction(PRESENTATION) < 0.20
     t_end = 64.0
     if not r.core.head.moving("pan", t_end) and not r.camera.truth.moving("pan", t_end):
         assert abs(r.core.head.angle("pan", t_end) - r.camera.truth.angle("pan", t_end)) < deg(1)
@@ -148,8 +148,8 @@ def test_rozmowa_head_turn_and_freeze_settles_in_band() -> None:
             dur = 20 / speed
 
             def path(t: float, d: float = dur) -> tuple[float, float]:
-                return deg(20) * min(max(t - 3.0, 0.0) / d, 1.0), framed(ROZMOWA)
-            r = simulate(ROZMOWA, SimScene(path, frame=FRAME, exposure_lag=lag), 14.0, dyn_true=dyn, dyn_model=dyn)
+                return deg(20) * min(max(t - 3.0, 0.0) / d, 1.0), framed(TALK)
+            r = simulate(TALK, SimScene(path, frame=FRAME, exposure_lag=lag), 14.0, dyn_true=dyn, dyn_model=dyn)
             s = min(r.samples, key=lambda row: abs(row[0] - 13.5))
             in_band = (s[1] is not None and abs(s[1] - w / 2) <= COMPOSITION_BAND * w
                        and abs(s[2] - GOLDEN * h) <= COMPOSITION_BAND * h)
@@ -160,9 +160,9 @@ def test_rozmowa_head_turn_and_freeze_settles_in_band() -> None:
 
 
 def seated(scale_fn, seconds: float, yaw_fn=None, start_zoom: float = 0.0):
-    scene = SimScene(lambda t: (0.0, framed(ROZMOWA)), frame=FRAME,
+    scene = SimScene(lambda t: (0.0, framed(TALK)), frame=FRAME,
                      head_scale=scale_fn, yaw=yaw_fn or (lambda t: 0.0))
-    return simulate(ROZMOWA, scene, seconds, auto_zoom=True, start_zoom=start_zoom)
+    return simulate(TALK, scene, seconds, auto_zoom=True, start_zoom=start_zoom)
 
 
 def test_auto_zoom_settles_with_one_move() -> None:
@@ -187,7 +187,7 @@ def test_stepping_back_rezooms_once() -> None:
 
 def test_head_turn_moves_camera_once_to_side() -> None:
     r = seated(lambda t: deg(4), 30.0, yaw_fn=lambda t: 0.6 if t >= 15.0 else 0.0)
-    assert r.core.director.side.side == "lewy"
+    assert r.core.director.side.side == "left"
     assert r.moves_per_min() <= 8.0
 
 
@@ -205,7 +205,7 @@ def test_standing_up_and_sitting_down_moves_tilt_without_staircase() -> None:
     import eagleeye.sim as sim
     blur, sim.BLUR_SPEED = sim.BLUR_SPEED, deg(1000)    # detektor widzi też w ruchu (jak na kamerze)
     try:
-        for profile in (ROZMOWA, PREZENTACJA):
+        for profile in (TALK, PRESENTATION):
             for seed in (1, 2, 3):
                 # Wstaje i siada w 0,8 s (człowiek, nie teleport: skok w jednej klatce wyrzuca
                 # głowę za górną krawędź i to już jest utrata celu, nie kadrowanie).
@@ -221,7 +221,7 @@ def test_standing_up_and_sitting_down_moves_tilt_without_staircase() -> None:
                 # szybkie wstanie wyprowadza głowę z kadru, zanim się skończy - ruch musi ruszyć
                 # w trakcie (ucieczka), a filtr spóźnia się za skokiem prędkości; dopuszczalne
                 # jedno dogonienie. Przed poprawkami: 3-6 ruchów i oscylacja.
-                limit = 2 if profile is ROZMOWA else 3
+                limit = 2 if profile is TALK else 3
                 assert 2 <= tilts <= limit, (profile.name, seed, tilts)
                 _, _, y = r.samples[-1]
                 assert abs(y - GOLDEN * FRAME[1]) < COMPOSITION_BAND * FRAME[1] + deg(1.0) / View(*FRAME).arcsec_per_px
@@ -230,11 +230,11 @@ def test_standing_up_and_sitting_down_moves_tilt_without_staircase() -> None:
 
 
 def test_step_aside_with_head_turn_is_one_pan_move() -> None:
-    scene = SimScene(lambda t: (deg(12) if t > 10.0 else 0.0, framed(ROZMOWA)), frame=FRAME,
+    scene = SimScene(lambda t: (deg(12) if t > 10.0 else 0.0, framed(TALK)), frame=FRAME,
                      yaw=lambda t: -0.8 if t > 10.3 else 0.0)
-    r = simulate(ROZMOWA, scene, 25.0, dyn_true=MEASURED, dyn_model=MEASURED)
+    r = simulate(TALK, scene, 25.0, dyn_true=MEASURED, dyn_model=MEASURED)
     assert r.camera.moves_by_axis["pan"] == 1, r.camera.moves_by_axis
-    assert r.core.director.side.side == "prawy"
+    assert r.core.director.side.side == "right"
 
 
 if __name__ == "__main__":

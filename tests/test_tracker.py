@@ -23,6 +23,7 @@ from fakes import FakeControls, TwoPeople  # noqa: E402
 from runner import run  # noqa: E402
 
 from eagleeye.detectors import Detection  # noqa: E402
+from eagleeye.i18n import msg  # noqa: E402
 from eagleeye.tracker import SessionRecorder, Tracker, TrackerSettings, load_session  # noqa: E402
 from eagleeye.v4l2 import CID_PAN_ABSOLUTE, CID_PAN_SPEED, CID_ZOOM_ABSOLUTE  # noqa: E402
 
@@ -269,9 +270,9 @@ def test_click_selects_one_of_two_people_and_clear_returns_to_auto() -> None:
     try:
         assert tr.state.target.box == fake.left.as_box(), "AUTO: największa osoba"
         assert tr.select_at(220, 80) is True
-        assert _wait_until(lambda: tr.state.selection == "wybrana" and tr.state.target is not None
+        assert _wait_until(lambda: tr.state.selection == "selected" and tr.state.target is not None
                            and tr.state.target.box == fake.right.as_box())
-        assert tr.select_at(5, 5) is False and tr.state.selection == "wybrana", "puste miejsce nic nie zmienia"
+        assert tr.select_at(5, 5) is False and tr.state.selection == "selected", "puste miejsce nic nie zmienia"
         tr.clear_selection()
         assert _wait_until(lambda: tr.state.selection == "auto" and tr.state.target is not None
                            and tr.state.target.box == fake.left.as_box())
@@ -284,12 +285,12 @@ def test_selected_person_leaving_suspends_then_expires_to_auto() -> None:
     tr.set_select_hold(1.3)
     try:
         assert tr.select_at(220, 80)
-        assert _wait_until(lambda: tr.state.selection == "wybrana")
+        assert _wait_until(lambda: tr.state.selection == "selected")
         fake.dets = [fake.left]                          # wybrana wychodzi z kadru
-        assert _wait_until(lambda: tr.state.selection == "zawieszona")
+        assert _wait_until(lambda: tr.state.selection == "suspended")
         assert tr.state.target is None, "kamera stoi, nie przechodzi na drugą osobę"
         assert _wait_until(lambda: tr.state.selection == "auto", timeout=4.0)
-        assert "zniknęła" in tr.state.selection_note
+        assert tr.state.selection_note == msg("identity.selection_lost")
         assert _wait_until(lambda: tr.state.target is not None and tr.state.target.box == fake.left.as_box())
     finally:
         tr.stop()
@@ -299,11 +300,11 @@ def test_selected_person_returning_is_tracked_again() -> None:
     tr, fake = _two_people_tracker()
     try:
         assert tr.select_at(220, 80)
-        assert _wait_until(lambda: tr.state.selection == "wybrana")
+        assert _wait_until(lambda: tr.state.selection == "selected")
         fake.dets = [fake.left]
-        assert _wait_until(lambda: tr.state.selection == "zawieszona")
+        assert _wait_until(lambda: tr.state.selection == "suspended")
         fake.dets = [fake.left, fake.right]              # wraca w to samo miejsce
-        assert _wait_until(lambda: tr.state.selection == "wybrana" and tr.state.target is not None
+        assert _wait_until(lambda: tr.state.selection == "selected" and tr.state.target is not None
                            and tr.state.target.box == fake.right.as_box())
     finally:
         tr.stop()
@@ -313,7 +314,7 @@ def test_disabling_tracking_clears_the_selection() -> None:
     tr, _ = _two_people_tracker()
     try:
         assert tr.select_at(220, 80)
-        assert _wait_until(lambda: tr.state.selection == "wybrana")
+        assert _wait_until(lambda: tr.state.selection == "selected")
         tr.set_enabled(False)
         assert _wait_until(lambda: tr.state.selection == "auto" and tr.state.tracks == ())
         tr.set_enabled(True)
@@ -327,7 +328,7 @@ def test_identity_error_returns_to_auto_and_keeps_running() -> None:
     tr, fake = _two_people_tracker()
     try:
         assert tr.select_at(220, 80)
-        assert _wait_until(lambda: tr.state.selection == "wybrana")
+        assert _wait_until(lambda: tr.state.selection == "selected")
         fake.fail_observation = True                     # numeracja rzuca przy wybranej osobie
         assert _wait_until(lambda: tr.state.selection == "auto" and tr.state.selection_note != "")
         assert tr.enabled and tr.state.enabled
@@ -341,7 +342,7 @@ def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
     tr, fake = _two_people_tracker()
     try:
         assert tr.select_at(220, 80)
-        assert _wait_until(lambda: tr.state.selection == "wybrana")
+        assert _wait_until(lambda: tr.state.selection == "selected")
         tr.core.actuator.zoom_model.moving = lambda t: True
         time.sleep(0.2)
         fake.dets = [fake.left, fake.right, Detection(120, 30, 40, 120, 0.9, "poza")]

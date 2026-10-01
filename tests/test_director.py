@@ -19,7 +19,7 @@ from eagleeye.director import Director, Limits, REFIT_DWELL, ZOOM_DWELL, ZOOM_WI
 from eagleeye.framing import GOLDEN, SHOTS, Shot, zoom_goal  # noqa: E402
 from eagleeye.geometry import View, deg  # noqa: E402
 from eagleeye.head_model import Dynamics, HeadModel  # noqa: E402
-from eagleeye.profiles import PREZENTACJA, ROZMOWA  # noqa: E402
+from eagleeye.profiles import PRESENTATION, TALK  # noqa: E402
 from eagleeye.target_filter import TargetEstimate  # noqa: E402
 
 DYN = Dynamics()
@@ -60,25 +60,25 @@ def simulate(director: Director, head: HeadModel, seconds: float, est_fn, t0: fl
 
 
 def test_brief_excursion_shorter_than_dwell_is_ignored() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 5.0, lambda t, _: est(0.3 * VIEW.hfov if 1.0 <= t < 1.5 else 0.0,
-                                               framed_tilt(ROZMOWA), t))
+                                               framed_tilt(TALK), t))
     assert log == []
 
 
 def test_sustained_offset_moves_once_exactly_to_aim() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     aim = 0.3 * VIEW.hfov
-    log = simulate(d, h, 6.0, lambda t, _: est(aim, framed_tilt(ROZMOWA), t))
+    log = simulate(d, h, 6.0, lambda t, _: est(aim, framed_tilt(TALK), t))
     pans = [c for _, c in log if c.axis == "pan"]
     assert len(pans) == 1 and pans[0].kind == "abs" and abs(pans[0].value - aim) < 1e-6
-    assert abs(log[0][0] - ROZMOWA.dwell) < 2 * DT
+    assert abs(log[0][0] - TALK.dwell) < 2 * DT
 
 
 def test_tilt_frames_head_on_golden_line() -> None:
     # Głowa startuje poza strefą wyzwalania (odchylenie 0,182 vfov > 0,12 vfov) - test
     # sprawdza dokładność dojazdu na linię złotego podziału jednym ruchem.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 3.0, lambda t, _: est(0.0, 0.3 * VIEW.vfov, t))
     tilts = [c for _, c in log if c.axis == "tilt"]
     assert len(tilts) == 1
@@ -90,8 +90,8 @@ def test_tilt_frames_head_from_within_old_zone() -> None:
     # 0,12 vfov (≈4,9°), więc kamera nigdy nie ustawiała jej na linii (pierwszy rozkaz
     # tiltu w całej sesji po 92 s). Dziś naprawia to pasmo kompozycji (5%) i cichy re-fit -
     # jednym ruchem, dokładnie na linię (a nie strefa zmniejszona do 2°, która goniła kiwnięcia).
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
-    log = simulate(d, h, 6.0, lambda t, _: est(0.0, framed_tilt(ROZMOWA) - deg(3), t))
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
+    log = simulate(d, h, 6.0, lambda t, _: est(0.0, framed_tilt(TALK) - deg(3), t))
     tilts = [c for _, c in log if c.axis == "tilt"]
     assert len(tilts) == 1, [c.value for _, c in log]
     assert abs(tilts[0].value + deg(3)) < 1e-6
@@ -101,9 +101,9 @@ def test_rest_off_point_reframes_after_refit_dwell() -> None:
     # Odbiór 2026-09-25: użytkownik przeniósł fotel - głowa osiadła 10% szerokości od
     # punktu złotego podziału (w strefie wyzwalania 15%); sama strefa zostawiałaby kadr
     # w tym stanie na stałe (kryterium 1: błąd ≤ 5%). Cichy re-fit po REFIT_DWELL.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     offset = 0.10 * VIEW.hfov
-    log = simulate(d, h, 6.0, lambda t, _: est(offset, framed_tilt(ROZMOWA), t))
+    log = simulate(d, h, 6.0, lambda t, _: est(offset, framed_tilt(TALK), t))
     pans = [c for _, c in log if c.axis == "pan"]
     assert len(pans) == 1, [(t, c.value) for t, c in log]
     assert abs(pans[0].value - offset) < 1e-6
@@ -111,28 +111,28 @@ def test_rest_off_point_reframes_after_refit_dwell() -> None:
 
 
 def test_rest_inside_composition_band_never_moves() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
-    log = simulate(d, h, 8.0, lambda t, _: est(0.04 * VIEW.hfov, framed_tilt(ROZMOWA), t))
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
+    log = simulate(d, h, 8.0, lambda t, _: est(0.04 * VIEW.hfov, framed_tilt(TALK), t))
     assert log == []
 
 
 def test_brief_mid_band_excursion_does_not_refit() -> None:
     # Wycieczka 10% szerokości trwająca 2 s (gest) - za krótka, by liczyć się za nową
     # pozycję spoczynkową.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 8.0, lambda t, _: est(0.10 * VIEW.hfov if 2.0 <= t < 4.0 else 0.0,
-                                               framed_tilt(ROZMOWA), t))
+                                               framed_tilt(TALK), t))
     assert log == []
 
 
 def test_turning_head_moves_face_to_opposite_golden_point() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt()
     log = simulate(d, h, 6.0, lambda t, _: est(0.0, tilt, t, yaw=0.6 if t >= 1.0 else 0.0))
     pans = [(t, c.value) for t, c in log if c.axis == "pan"]
     assert len(pans) == 1, pans
     t_move, value = pans[0]
-    assert abs(t_move - (1.0 + ROZMOWA.side_dwell)) < 2 * DT
+    assert abs(t_move - (1.0 + TALK.side_dwell)) < 2 * DT
     x, _ = VIEW.world_to_pixel(0.0, tilt, value, 0.0)
     assert abs(x - GOLDEN * VIEW.frame_w) < 1.0
 
@@ -140,7 +140,7 @@ def test_turning_head_moves_face_to_opposite_golden_point() -> None:
 def test_turning_head_to_other_side_is_one_pan_move() -> None:
     # Zgłoszone 2026-09-26: nos w lewo -> nos w prawo przechodziło przez punkt środkowy
     # (dwa ruchy). Ma być jeden ruch, wprost na przeciwny punkt złotego podziału.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt()
     yaw = lambda t: 0.6 if t < 6.0 else -0.6
     log = simulate(d, h, 12.0, lambda t, _: est(0.0, tilt, t, yaw=yaw(t)))
@@ -151,13 +151,13 @@ def test_turning_head_to_other_side_is_one_pan_move() -> None:
 
 
 def test_frontal_face_stays_centered() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log = simulate(d, h, 6.0, lambda t, _: est(0.0, framed_tilt(), t, yaw=0.1))
     assert log == []
 
 
 def test_no_retarget_before_60_percent_of_move() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     first = 0.3 * VIEW.hfov
     moved_at: list[float] = []
 
@@ -165,7 +165,7 @@ def test_no_retarget_before_60_percent_of_move() -> None:
         if head.target("pan") is not None and not moved_at:
             moved_at.append(t)
         pan = first if not moved_at else 0.9 * VIEW.hfov
-        return est(pan, framed_tilt(ROZMOWA), t)
+        return est(pan, framed_tilt(TALK), t)
 
     log = simulate(d, h, 6.0, target)
     pans = [(t, c) for t, c in log if c.axis == "pan"]
@@ -177,8 +177,8 @@ def test_no_retarget_before_60_percent_of_move() -> None:
 
 
 def test_lead_in_presentation_moves_past_aim() -> None:
-    d, h = Director(PREZENTACJA, LIM, DYN), HeadModel(DYN)
-    log = simulate(d, h, 1.0, lambda t, _: est(0.3 * VIEW.hfov, framed_tilt(PREZENTACJA), t, v_pan=deg(4)))
+    d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
+    log = simulate(d, h, 1.0, lambda t, _: est(0.3 * VIEW.hfov, framed_tilt(PRESENTATION), t, v_pan=deg(4)))
     pans = [c for _, c in log if c.axis == "pan" and c.kind == "abs"]
     assert pans and pans[0].value > 0.3 * VIEW.hfov
 
@@ -188,7 +188,7 @@ def test_presentation_lead_is_bounded() -> None:
     # prędkość kątowa z filtra ~60°/s, a wyprzedzenie v × ~0,5 s dawało rozkazy pan
     # +110° i -110°. Wyprzedzenie jest dla idącej osoby: prędkość do 25°/s, najwyżej 1/4 kadru.
     from eagleeye.director import LEAD_MAX_FOV
-    d, h = Director(PREZENTACJA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
     aim = 0.3 * VIEW.hfov
     # Prędkość w stronę środka kadru - bez podążania, ruch absolutny z wyprzedzeniem.
     log = simulate(d, h, 1.0, lambda t, _: est(aim, framed_tilt(), t, v_pan=-deg(60)))
@@ -200,7 +200,7 @@ def test_presentation_lead_is_bounded() -> None:
 def test_presentation_lead_is_pan_only() -> None:
     # Pionowa "prędkość" to kiwanie głową, nie chód: wyprzedzenie wystrzeliwało tilt ponad
     # cel, a drugi ruch wracał (sesja 20260926-011024, t=191,9 s).
-    d, h = Director(PREZENTACJA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt() + 0.3 * VIEW.vfov
     log = simulate(d, h, 1.0, lambda t, _: est(0.0, tilt, t, v_tilt=deg(6)))
     tilts = [c for _, c in log if c.axis == "tilt"]
@@ -211,7 +211,7 @@ def test_nod_inside_tilt_zone_does_not_move() -> None:
     # Kiwnięcie ±2,5° (pionowe gesty w rozmowie) mieści się w strefie tiltu i wraca do pasma
     # kompozycji, zanim upłynie REFIT_DWELL - kamera stoi.
     import math
-    for profile in (ROZMOWA, PREZENTACJA):
+    for profile in (TALK, PRESENTATION):
         d, h = Director(profile, LIM, DYN), HeadModel(DYN)
         log = simulate(d, h, 10.0, lambda t, _: est(0.0, framed_tilt() + deg(2.5) * math.sin(t * 4.0), t))
         assert log == [], (profile.name, [(t, c.axis, c.value) for t, c in log])
@@ -221,7 +221,7 @@ def test_pan_waits_for_side_decision_then_moves_once() -> None:
     # Krok w bok z odwróceniem twarzy: ruch pozycji ruszał przed rozstrzygnięciem strony,
     # a zmiana strony 1-1,5 s później wymuszała drugi ruch (sesja 20260926-011024, np.
     # t=1248-1250 s). Pan czeka na decyzję strony i jedzie raz, do punktu nowej strony.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     tilt = framed_tilt()
     offset = 0.25 * VIEW.hfov
     log = simulate(d, h, 6.0, lambda t, _: est(offset if t >= 1.0 else 0.0, tilt, t,
@@ -229,31 +229,31 @@ def test_pan_waits_for_side_decision_then_moves_once() -> None:
     pans = [(t, c.value) for t, c in log if c.axis == "pan"]
     assert len(pans) == 1, pans
     t_move, value = pans[0]
-    assert t_move >= 1.0 + ROZMOWA.side_dwell - 2 * DT
+    assert t_move >= 1.0 + TALK.side_dwell - 2 * DT
     x, _ = VIEW.world_to_pixel(offset, tilt, value, 0.0)
     assert abs(x - GOLDEN * VIEW.frame_w) < 1.0
 
 
 def test_target_near_edge_does_not_wait_for_side() -> None:
     # Cel przy krawędzi (idzie) nie czeka na stronę - utrata byłaby gorsza niż dwa ruchy.
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     offset = 0.42 * VIEW.hfov
     log = simulate(d, h, 2.0, lambda t, _: est(offset, framed_tilt(), t, yaw=0.6))
     pans = [t for t, c in log if c.axis == "pan"]
-    assert pans and pans[0] < ROZMOWA.side_dwell
+    assert pans and pans[0] < TALK.side_dwell
 
 
 def test_target_beyond_limit_does_not_spam_moves() -> None:
-    d = Director(ROZMOWA, LIM, DYN)
+    d = Director(TALK, LIM, DYN)
     h = HeadModel(DYN, pan=LIM.pan_max)
-    log = simulate(d, h, 10.0, lambda t, _: est(LIM.pan_max + 0.4 * VIEW.hfov, framed_tilt(ROZMOWA), t))
+    log = simulate(d, h, 10.0, lambda t, _: est(LIM.pan_max + 0.4 * VIEW.hfov, framed_tilt(TALK), t))
     assert [c for _, c in log if c.axis == "pan"] == []
 
 
 def test_fast_walker_triggers_follow_then_brake_then_absolute() -> None:
-    d, h = Director(PREZENTACJA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
     v = deg(20)
-    log = simulate(d, h, 4.0, lambda t, _: est(0.12 * VIEW.hfov + v * t, framed_tilt(PREZENTACJA), t, v_pan=v))
+    log = simulate(d, h, 4.0, lambda t, _: est(0.12 * VIEW.hfov + v * t, framed_tilt(PRESENTATION), t, v_pan=v))
     pan = [(c.kind, c.value) for _, c in log if c.axis == "pan"]
     assert ("vel", 1) in pan
     start = pan.index(("vel", 1))
@@ -263,24 +263,24 @@ def test_fast_walker_triggers_follow_then_brake_then_absolute() -> None:
 
 
 def test_rozmowa_never_uses_velocity() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
-    log = simulate(d, h, 4.0, lambda t, _: est(0.2 * VIEW.hfov + deg(20) * t, framed_tilt(ROZMOWA), t,
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
+    log = simulate(d, h, 4.0, lambda t, _: est(0.2 * VIEW.hfov + deg(20) * t, framed_tilt(TALK), t,
                                                v_pan=deg(20)))
     assert all(c.kind != "vel" for _, c in log)
 
 
 def test_tilt_never_uses_velocity() -> None:
-    d, h = Director(PREZENTACJA, LIM, DYN), HeadModel(DYN)
-    log = simulate(d, h, 3.0, lambda t, _: est(0.0, framed_tilt(PREZENTACJA) + deg(20) * t, t,
+    d, h = Director(PRESENTATION, LIM, DYN), HeadModel(DYN)
+    log = simulate(d, h, 3.0, lambda t, _: est(0.0, framed_tilt(PRESENTATION) + deg(20) * t, t,
                                                v_tilt=deg(20)))
     assert all(not (c.axis == "tilt" and c.kind == "vel") for _, c in log)
 
 
 def test_follow_stops_before_pan_limit() -> None:
-    d = Director(PREZENTACJA, LIM, DYN)
+    d = Director(PRESENTATION, LIM, DYN)
     h = HeadModel(DYN, pan=deg(150))
     v = deg(25)
-    simulate(d, h, 4.0, lambda t, _: est(deg(150) + 0.12 * VIEW.hfov + v * t, framed_tilt(PREZENTACJA), t, v_pan=v))
+    simulate(d, h, 4.0, lambda t, _: est(deg(150) + 0.12 * VIEW.hfov + v * t, framed_tilt(PRESENTATION), t, v_pan=v))
     assert max(h.angle("pan", i * 0.05) for i in range(120)) <= LIM.pan_max + deg(0.5)
 
 
@@ -301,7 +301,7 @@ def run_zoom(d, h, seconds: float, est_fn, zoom: float = 0.0, t0: float = 0.0):
     return log, zoom_now
 
 
-def auto_director(profile=ROZMOWA):
+def auto_director(profile=TALK):
     d = Director(profile, LIM, DYN)
     d.auto_zoom = True
     return d, HeadModel(DYN)
@@ -380,7 +380,7 @@ def test_zoom_stable_target_still_moves_once() -> None:
 
 
 def test_auto_zoom_off_sends_no_zoom() -> None:
-    d, h = Director(ROZMOWA, LIM, DYN), HeadModel(DYN)
+    d, h = Director(TALK, LIM, DYN), HeadModel(DYN)
     log, _ = run_zoom(d, h, 8.0, lambda t, _: est(0.0, framed_tilt(), t, scale=deg(4)))
     assert [c for _, c in log if c.kind == "zoom"] == []
 

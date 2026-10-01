@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from runner import run  # noqa: E402
 
 from eagleeye.detectors import Detection  # noqa: E402
+from eagleeye.i18n import msg  # noqa: E402
 from eagleeye.identity import (AUTO, RETAIN_S, SELECTED, SUSPENDED, PersonTracker,  # noqa: E402
                                TargetSelection, TrackInfo, track_at, track_infos)
 
@@ -207,9 +208,9 @@ def test_selection_expires_to_auto() -> None:
     sel.select(1, 0.0)
     sel.resolve([_T(1, False)], 3.0)
     assert sel.resolve([_T(1, False)], 6.5) is None
-    assert sel.state == AUTO and sel.track_id is None and "zniknęła" in sel.event
+    assert sel.state == AUTO and sel.track_id is None and sel.event == msg("identity.selection_lost")
     sel.select(2, 7.0)
-    assert sel.event == "" and sel.state == SELECTED
+    assert sel.event is None and sel.state == SELECTED
 
 
 def test_selection_clear_and_missing_track() -> None:
@@ -218,6 +219,10 @@ def test_selection_clear_and_missing_track() -> None:
     assert sel.resolve([], 1.0) is None and sel.state == SUSPENDED
     sel.clear()
     assert sel.state == AUTO and sel.track_id is None
+
+
+def test_selection_state_values_are_english_codes() -> None:
+    assert (AUTO, SELECTED, SUSPENDED) == ("auto", "selected", "suspended")
 
 
 if __name__ == "__main__":

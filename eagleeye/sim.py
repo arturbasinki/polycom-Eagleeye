@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .core import TrackingCore
-from .director import SLEDZENIE
+from .director import TRACKING
 from .framing import GOLDEN
 from .geometry import View, deg
 from .head_model import Dynamics, HeadModel
@@ -148,7 +148,7 @@ class SimScene:
         scale_px = None
         if self.head_scale is not None:
             scale_px = self.head_scale(ft) / View(*self.frame, zoom).arcsec_per_px
-        return Observation(x, y, ft, 0.9, "twarz", (int(x) - 20, int(y) - 20, 40, 40),
+        return Observation(x, y, ft, 0.9, "face", (int(x) - 20, int(y) - 20, 40, 40),
                            yaw=self.yaw(ft) if self.yaw else None, head_scale_px=scale_px)
 
 
@@ -216,7 +216,7 @@ def simulate(profile: Profile, scene: SimScene, seconds: float, *, dyn_true: Dyn
         obs = scene.observe(t, cam, core.actuator.zoom_value)
         cmds = core.step(t, obs, *scene.frame)
         result.zoom_moves += sum(1 for c in cmds if c.kind == "zoom")
-        if result.found_at is None and obs is not None and core.director.status.mode == SLEDZENIE:
+        if result.found_at is None and obs is not None and core.director.status.mode == TRACKING:
             result.found_at = t
         point = scene.head_pixel(t, cam, core.actuator.zoom_value)
         result.samples.append((t, *(point if point else (None, None))))

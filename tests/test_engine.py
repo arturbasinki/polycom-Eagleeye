@@ -193,9 +193,9 @@ def test_profile_command_validates_and_saves() -> None:
     engine, _ = make_engine()
     engine.start()
     try:
-        assert engine.command("profil", "prezentacja")["profil"] == "prezentacja"
+        assert engine.command("profil", "presentation")["profil"] == "presentation"
         saved = json.loads(engine.store.path.read_text(encoding="utf-8"))
-        assert saved["settings"]["tracking"]["profile"] == "prezentacja"
+        assert saved["settings"]["tracking"]["profile"] == "presentation"
         try:
             engine.command("profil", "nieistniejący")
         except ValueError:
@@ -270,7 +270,7 @@ def test_wybierz_selects_a_person_and_state_lists_people() -> None:
         assert wybor["stan"] == "auto" and wybor["klatka"] == [640, 360]
         assert all(o["widoczna"] and len(o["ramka"]) == 4 for o in wybor["osoby"])
         engine.command("wybierz", "220,80")
-        assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "wybrana")
+        assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "selected")
         assert engine.state()["wybor"]["id"] is not None
         engine.command("wybierz", "brak")
         assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "auto")

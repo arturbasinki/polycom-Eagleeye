@@ -37,14 +37,14 @@ def test_old_tracking_keys_are_dropped() -> None:
     s = store_with({"tracking": {"kp": 0.9, "settle_time": 0.2, "use_gpu": False, "motion_mode": "rozkaz"}})
     tr = s.settings["tracking"]
     assert "kp" not in tr and "settle_time" not in tr and "motion_mode" not in tr
-    assert tr["use_gpu"] is False and tr["profile"] == "rozmowa"
+    assert tr["use_gpu"] is False and tr["profile"] == "talk"
 
 
 def test_new_tracking_keys_are_kept() -> None:
-    s = store_with({"tracking": {"profile": "prezentacja", "home": [3600, -1800],
+    s = store_with({"tracking": {"profile": "presentation", "home": [3600, -1800],
                                  "overrides": {"dwell": 0.5}}})
     tr = s.settings["tracking"]
-    assert tr["profile"] == "prezentacja" and tr["home"] == [3600, -1800] and tr["overrides"] == {"dwell": 0.5}
+    assert tr["profile"] == "presentation" and tr["home"] == [3600, -1800] and tr["overrides"] == {"dwell": 0.5}
 
 
 def test_auto_zoom_defaults_on_and_survives_reload() -> None:

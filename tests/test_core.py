@@ -15,10 +15,10 @@ from fakes import FakeControls  # noqa: E402
 from runner import run  # noqa: E402
 
 from eagleeye.core import TrackingCore  # noqa: E402
-from eagleeye.director import UTRATA, Command  # noqa: E402
+from eagleeye.director import LOST, Command  # noqa: E402
 from eagleeye.head_model import Dynamics  # noqa: E402
 from eagleeye.perception import Observation  # noqa: E402
-from eagleeye.profiles import ROZMOWA  # noqa: E402
+from eagleeye.profiles import TALK  # noqa: E402
 
 W, H = 960, 540
 DYN = Dynamics(zoom_latency=0.1, zoom_base=0.3, zoom_speed=2000.0)
@@ -29,7 +29,7 @@ def obs(t: float, scale: float | None = 60.0, yaw: float | None = 0.0) -> Observ
 
 
 def core() -> TrackingCore:
-    c = TrackingCore(FakeControls(), ROZMOWA, DYN)
+    c = TrackingCore(FakeControls(), TALK, DYN)
     c.actuator.sync_from_device(0.0)
     return c
 
@@ -55,7 +55,7 @@ def test_target_is_held_while_zoom_moves() -> None:
     c.step(0.0, obs(0.0), W, H)
     c.actuator.apply([Command("zoom", "zoom", 2400)], 0.1)
     c.step(1.0, None, W, H)                 # 1 s bez pomiaru > lost_after (0.4 s)
-    assert c.last_estimate is not None and c.director.status.mode != UTRATA
+    assert c.last_estimate is not None and c.director.status.mode != LOST
 
 
 if __name__ == "__main__":

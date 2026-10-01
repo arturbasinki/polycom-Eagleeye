@@ -23,9 +23,15 @@ KEY_CALLS = {"t", "msg", "Message", "LocalizedError"}     # first positional arg
 SOURCES = ([ROOT / "app.py"] + sorted((ROOT / "eagleeye").glob("*.py"))
            + sorted((ROOT / "tray").glob("*.py")) + sorted((ROOT / "tools").glob("*.py")))
 
+from eagleeye import director, framing  # noqa: E402
+
 # Keys built at runtime (``t(f"director.mode.{mode}")``): prefix -> the values it is built from.
 # Tasks that introduce a family extend this table.
-DYNAMIC_FAMILIES: dict[str, list[str]] = {}
+DYNAMIC_FAMILIES: dict[str, list[str]] = {
+    "director.mode.": [director.TRACKING, director.SEARCHING, director.LOST, director.WAITING],
+    "director.axis.": [director.IDLE, director.ALERT, director.MOVING, director.FOLLOWING, director.BRAKING],
+    "framing.side.": [framing.CENTER, framing.LEFT, framing.RIGHT],
+}
 
 
 def load(code: str) -> dict:

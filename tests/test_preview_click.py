@@ -48,7 +48,7 @@ def test_tap_on_a_person_selects_them() -> None:
     try:
         ui._overlay_size = (1280.0, 720.0)            # klatka 640x360 -> skala 2, bez pasów
         ui._on_preview_tap(_tap(2 * 220, 2 * 80))     # wewnątrz ramki prawej osoby
-        assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "wybrana")
+        assert _wait_until(lambda: engine.state()["wybor"]["stan"] == "selected")
     finally:
         engine.shutdown()
 

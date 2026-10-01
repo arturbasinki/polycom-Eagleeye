@@ -27,6 +27,7 @@ from .detectors import Detection, decode_mjpeg_scaled
 from .director import Command
 from .framing import GOLDEN, SIDE_X, shot_for
 from .head_model import Dynamics
+from .i18n import Message
 from .identity import AUTO, PersonTracker, TargetSelection, TrackInfo, track_at, track_infos
 from .perception import Observation, default_perception
 from .profiles import resolve
@@ -37,14 +38,14 @@ log = logging.getLogger("eagleeye")
 NO_FRAME_TIMEOUT = 1.0
 # Stan wyboru osoby po wyczyszczeniu (wyłączone śledzenie, błąd numeracji).
 IDENTITY_CLEARED = {"tracks": (), "selection": AUTO, "selected_id": None,
-                    "selection_left": 0.0, "selection_note": ""}
+                    "selection_left": 0.0, "selection_note": None}
 DETECTOR_FAILURES_TO_CPU = 5
 ZOOM_REFRESH = 1.0
 
 
 @dataclass
 class TrackerSettings:
-    profile: str = "rozmowa"
+    profile: str = "talk"
     overrides: dict = field(default_factory=dict)
     use_gpu: bool = True
     invert_pan: bool = False
@@ -65,7 +66,7 @@ class TrackerState:
     mode: str = ""
     pan_state: str = ""
     tilt_state: str = ""
-    note: str = ""
+    note: Message | None = None
     message: str = "śledzenie wyłączone"
     detections: tuple[Detection, ...] = ()
     target: Observation | None = None
@@ -86,10 +87,10 @@ class TrackerState:
     moves: int = 0
     detector: str = ""
     tracks: tuple[TrackInfo, ...] = ()               # osoby z numerami (widoczne i zawieszone)
-    selection: str = AUTO                            # auto / wybrana / zawieszona
+    selection: str = AUTO                            # auto / selected / suspended
     selected_id: int | None = None
-    selection_left: float = 0.0                      # s do końca czekania na zawieszoną
-    selection_note: str = ""                         # np. "wybrana osoba zniknęła - ..."
+    selection_left: float = 0.0                      # s left to wait for a suspended person
+    selection_note: Message | None = None            # e.g. the selected person vanished
 
 
 class SessionRecorder:

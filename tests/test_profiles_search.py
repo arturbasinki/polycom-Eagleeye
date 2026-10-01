@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from runner import run  # noqa: E402
 
 from eagleeye.geometry import deg  # noqa: E402
-from eagleeye.profiles import PREZENTACJA, ROZMOWA, resolve  # noqa: E402
+from eagleeye.profiles import DEFAULT_PROFILE, PRESENTATION, PROFILES, TALK, resolve  # noqa: E402
 from eagleeye.search import local_plan, pan_sequence, startup_plan  # noqa: E402
 
 PAN = (-deg(170), deg(170))
@@ -22,17 +22,23 @@ TILT = (-deg(30), deg(90))
 
 
 def test_profiles_match_spec() -> None:
-    assert (ROZMOWA.trigger_pan, ROZMOWA.dwell, ROZMOWA.follow, ROZMOWA.ladder_max) == (0.15, 0.8, False, 2)
-    assert (PREZENTACJA.trigger_pan, PREZENTACJA.dwell, PREZENTACJA.follow, PREZENTACJA.ladder_max) == (0.26, 0.2, True, 4)
+    assert (TALK.trigger_pan, TALK.dwell, TALK.follow, TALK.ladder_max) == (0.15, 0.8, False, 2)
+    assert (PRESENTATION.trigger_pan, PRESENTATION.dwell, PRESENTATION.follow, PRESENTATION.ladder_max) == (0.26, 0.2, True, 4)
 
 
 def test_resolve_applies_only_tunable_overrides() -> None:
-    p = resolve("prezentacja", {"dwell": 0.5, "follow": False, "nonsense": 3})
+    p = resolve("presentation", {"dwell": 0.5, "follow": False, "nonsense": 3})
     assert p.dwell == 0.5 and p.follow is True
 
 
-def test_unknown_profile_falls_back_to_rozmowa() -> None:
-    assert resolve("???").name == "rozmowa"
+def test_unknown_profile_falls_back_to_talk() -> None:
+    assert resolve("???").name == "talk"
+
+
+def test_profile_names_are_english_and_default_is_talk() -> None:
+    assert set(PROFILES) == {"talk", "presentation"} and DEFAULT_PROFILE == "talk"
+    assert TALK.name == "talk" and PRESENTATION.name == "presentation"
+    assert resolve("rozmowa").name == "talk", "unknown names fall back to the default profile"
 
 
 def test_pan_sequence_sweeps_one_side_then_the_other() -> None:

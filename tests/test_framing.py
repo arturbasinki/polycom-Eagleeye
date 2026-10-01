@@ -16,7 +16,7 @@ from runner import run  # noqa: E402
 from eagleeye.framing import (AUTO_ZOOM_MAX, CENTER, GOLDEN, LEFT, RIGHT, SHOTS,  # noqa: E402
                               Shot, SideSelector, aim, zoom_goal)
 from eagleeye.geometry import View, deg  # noqa: E402
-from eagleeye.profiles import PREZENTACJA, ROZMOWA, resolve  # noqa: E402
+from eagleeye.profiles import PRESENTATION, TALK, resolve  # noqa: E402
 from eagleeye.target_filter import TargetEstimate  # noqa: E402
 
 VIEW = View(1280, 720)
@@ -169,10 +169,14 @@ def test_reset_returns_to_center() -> None:
 
 
 def test_profiles_have_shots_and_overrides_are_validated() -> None:
-    assert ROZMOWA.shot == "MCU" and PREZENTACJA.shot == "MS"
-    assert resolve("rozmowa", {"shot": "CU"}).shot == "CU"
-    assert resolve("rozmowa", {"shot": "bzdura"}).shot == "MCU"
-    assert resolve("rozmowa", {"side_dwell": "2.5"}).side_dwell == 2.5
+    assert TALK.shot == "MCU" and PRESENTATION.shot == "MS"
+    assert resolve("talk", {"shot": "CU"}).shot == "CU"
+    assert resolve("talk", {"shot": "bzdura"}).shot == "MCU"
+    assert resolve("talk", {"side_dwell": "2.5"}).side_dwell == 2.5
+
+
+def test_side_values_are_english_codes() -> None:
+    assert (CENTER, LEFT, RIGHT) == ("center", "left", "right")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from .framing import CENTER, GOLDEN, SIDE_X, SideSelector, aim, shot_for, zoom_goal
 from .geometry import View, deg, zoom_factor
 from .head_model import Dynamics, HeadModel
+from .i18n import Message, msg
 from .profiles import Profile
 from .search import local_plan, startup_plan
 from .target_filter import TargetEstimate
@@ -52,9 +53,9 @@ class Limits:
 
 
 # stany osi
-SPOKOJ, CZUJNY, RUCH, PODAZANIE, HAMOWANIE = "spokój", "czujny", "ruch", "podążanie", "hamowanie"
+IDLE, ALERT, MOVING, FOLLOWING, BRAKING = "idle", "alert", "moving", "following", "braking"
 # tryby reżysera
-SLEDZENIE, SZUKANIE, UTRATA, CZEKANIE = "śledzenie", "szukanie", "utrata", "czekanie"
+TRACKING, SEARCHING, LOST, WAITING = "tracking", "searching", "lost", "waiting"
 
 FAST_FOR = 0.06             # s szybkiego ruchu celu, zanim włączymy podążanie
 RETARGET_PROGRESS = 0.6     # korekta w locie dopiero po tej części ruchu
@@ -96,7 +97,7 @@ ZOOM_WITH_PAN_TILT = True
 
 @dataclass
 class _Axis:
-    state: str = SPOKOJ
+    state: str = IDLE
     since: float = 0.0
     fast_since: float | None = None
     move_target: float | None = None
@@ -110,7 +111,7 @@ class DirectorStatus:
     mode: str
     pan: str
     tilt: str
-    note: str
+    note: Message | None
     ladder: int
 
 
@@ -122,13 +123,13 @@ class Director:
         self.home: tuple[float, float] | None = None
         self.last_azimuth: tuple[float, float] | None = None
         self._axes = {"pan": _Axis(), "tilt": _Axis()}
-        self._mode = SLEDZENIE
-        self._note = ""
+        self._mode = TRACKING
+        self._note = None
         self._pending: list[Command] = []
         self._last_est: TargetEstimate | None = None
         self._ladder = 0
         self._plan: list[tuple[float, float]] = []
-        self._plan_kind = ""                 # "start" | "lokalne"
+        self._plan_kind = ""                 # "start" | "local"
         self._arrived_at: float | None = None
         self._await_motion = False           # rozkaz punktu wysłany, głowica jeszcze nie ruszyła
         self._step_deadline: float | None = None
@@ -168,13 +169,13 @@ class Director:
     # --- tryby -----------------------------------------------------------
 
     def _tick_mode(self, t: float, est: TargetEstimate | None, head: HeadModel, view: View) -> list[Command]:
-        if self._mode == SZUKANIE:
+        if self._mode == SEARCHING:
             return self._tick_search(t, est, head)
-        if self._mode in (UTRATA, CZEKANIE):
+        if self._mode in (LOST, WAITING):
             still = not head.moving("pan", t) and not head.moving("tilt", t)
             if est is not None and still:
                 return self._reacquire()
-            if self._mode == UTRATA:
+            if self._mode == LOST:
                 return self._tick_lost(t, head, view)
             if self._rescan_at is not None and t >= self._rescan_at:
                 self.start_search(t, view.zoom_value)
@@ -185,7 +186,7 @@ class Director:
             # Własny dojazd absolutny może chwilowo zgubić detekcję (kamera się rusza).
             # Dokańczamy zaplanowany ruch, zanim ogłosimy utratę celu - inaczej reżyser
             # przerywałby własny przejazd i wpadał w drabinę utraty bez powodu.
-            if any(ax.state == RUCH and head.moving(axis, t) for axis, ax in self._axes.items()):
+            if any(ax.state == MOVING and head.moving(axis, t) for axis, ax in self._axes.items()):
                 return []
             return self._begin_lost(t, view)
         zoom = self._track_zoom(t, est, head, view)
@@ -211,7 +212,7 @@ class Director:
     def reset(self) -> None:
         """Śledzenie wyłączone: zapomnij plany i czekaj."""
         self._axes = {"pan": _Axis(), "tilt": _Axis()}
-        self._mode, self._ladder, self._note = CZEKANIE, 0, ""
+        self._mode, self._ladder, self._note = WAITING, 0, None
         self._plan, self._pending = [], []
         self._rescan_at = self._step_deadline = self._arrived_at = None
         self._await_motion = False
@@ -220,7 +221,7 @@ class Director:
         self._zoom_axis = _Axis()
 
     def _enter_search(self, zoom_value: float, cmds: list[Command]) -> list[Command]:
-        self._mode = SZUKANIE
+        self._mode = SEARCHING
         self._rescan_at = None
         if zoom_value > 0:
             if self._zoom_before is None:
@@ -232,7 +233,7 @@ class Director:
         pan, tilt = self._plan.pop(0)
         self._arrived_at = None
         self._await_motion = True
-        self._note = f"szukam osoby (zostało punktów: {len(self._plan)})"
+        self._note = msg("director.note.searching", points=len(self._plan))
         return [Command("abs", "pan", pan), Command("abs", "tilt", tilt)]
 
     def _tick_search(self, t: float, est: TargetEstimate | None, head: HeadModel) -> list[Command]:
@@ -260,19 +261,18 @@ class Director:
         # Bez presetu "dom" po szukaniu lokalnym wracamy tam, gdzie cel zniknął. Zostanie
         # w ostatnim punkcie skanu (-1 pole widzenia) odwracało kamerę od pokoju na stałe
         # (sesja 20260923-004030).
-        back = self.home or (self._return_point if self._plan_kind == "lokalne" else None)
+        back = self.home or (self._return_point if self._plan_kind == "local" else None)
         if back:
             cmds += [Command("abs", "pan", back[0]), Command("abs", "tilt", back[1])]
         cmds += self._restore_zoom()
         # Czekanie zawsze kończy się ponownym pełnym skanem - inaczej kamera odwrócona
         # od osoby nie miałaby jak jej znowu zobaczyć.
         self._rescan_at = t + RESCAN_AFTER
-        if self._plan_kind == "lokalne":
+        if self._plan_kind == "local":
             self._ladder = 4
-        self._mode = CZEKANIE
-        self._note = "nikogo nie znalazłem - czekam"
-        if self._rescan_at is not None:
-            self._note += f", ponowny skan za {RESCAN_AFTER:.0f} s"
+        self._mode = WAITING
+        self._note = (msg("director.note.nobody_rescan", seconds=f"{RESCAN_AFTER:.0f}")
+                      if self._rescan_at is not None else msg("director.note.nobody"))
         return cmds
 
     def _restore_zoom(self) -> list[Command]:
@@ -282,12 +282,12 @@ class Director:
         return [Command("zoom", "zoom", zoom)]
 
     def _reacquire(self) -> list[Command]:
-        self._mode, self._ladder = SLEDZENIE, 0
+        self._mode, self._ladder = TRACKING, 0
         self._plan, self._rescan_at, self._step_deadline = [], None, None
         self._await_motion = False
         self._axes = {"pan": _Axis(), "tilt": _Axis()}
         self._zoom_axis = _Axis()
-        self._note = "cel odnaleziony"
+        self._note = msg("director.note.found")
         if self.auto_zoom:
             self._zoom_before = None        # zoom wyliczy kompozycja z planu
             return []
@@ -297,24 +297,24 @@ class Director:
 
     def _begin_lost(self, t: float, view: View) -> list[Command]:
         cmds = self._stop_following()
-        self._mode, self._step_deadline = UTRATA, None
+        self._mode, self._step_deadline = LOST, None
         last = self._last_est
         if last is None:
-            self._mode, self._note = CZEKANIE, "brak celu"
+            self._mode, self._note = WAITING, msg("director.note.no_target")
             return cmds
         offset = last.pan - self._cam_at_last_seen
         near_edge = abs(offset) > (0.5 - EDGE_MARGIN) * view.hfov
         toward = 1 if offset > 0 else -1
         if self.profile.catch_up and near_edge and last.v_pan * toward > CATCHUP_MIN_SPEED:
             reach = max(-CATCHUP_MAX * view.hfov, min(CATCHUP_MAX * view.hfov, last.v_pan * CATCHUP_HORIZON))
-            self._ladder, self._note = 1, "doganiam cel"
+            self._ladder, self._note = 1, msg("director.note.catching_up")
             return cmds + [Command("abs", "pan", self.limits.clamp("pan", last.pan + reach))]
         return cmds + self._ladder_last_azimuth(view)
 
     def _ladder_last_azimuth(self, view: View) -> list[Command]:
         last = self._last_est
         self._ladder, self._step_deadline = 2, None
-        self._note = "czekam tam, gdzie cel zniknął"
+        self._note = msg("director.note.waiting_last_seen")
         cmds = [Command("abs", "pan", self.limits.clamp("pan", last.pan)),
                 Command("abs", "tilt", self.limits.clamp("tilt", self._aim("tilt", last, view)))]
         return cmds
@@ -335,7 +335,7 @@ class Director:
             # odwrócenie się) nie może skakać obrazem 2400 -> 0 -> 2400.
             self._zoom_before = view.zoom_value
             self._step_deadline = None
-            self._note = "oddalam, żeby zobaczyć więcej"
+            self._note = msg("director.note.zooming_out")
             return [Command("zoom", "zoom", 0.0)]
         if self._ladder == 2 and self.profile.ladder_max >= 3:
             last = self._last_est
@@ -343,7 +343,7 @@ class Director:
             tilt = self.limits.clamp("tilt", self._aim("tilt", last, view))
             self._plan = local_plan(last.pan, tilt, view.hfov, self.limits.bounds("pan"))
             self._return_point = self._plan[0]      # miejsce utraty celu - tam wracamy bez "domu"
-            self._plan_kind = "lokalne"
+            self._plan_kind = "local"
             return self._enter_search(view.zoom_value, [])
         self._step_deadline = math.inf      # rozmowa: zostajemy na kroku 2
         return []
@@ -351,7 +351,7 @@ class Director:
     def _stop_following(self) -> list[Command]:
         cmds = []
         for axis, ax in self._axes.items():
-            if ax.state == PODAZANIE:
+            if ax.state == FOLLOWING:
                 cmds.append(Command("vel", axis, 0))
             self._axes[axis] = _Axis()
         return cmds
@@ -367,7 +367,7 @@ class Director:
         """W trakcie jazdy zoomu celujemy już przy docelowym polu widzenia - po dojeździe
         obu osi twarz jest dokładnie w punkcie."""
         z = self._zoom_axis
-        if z.state == RUCH and z.move_target is not None:
+        if z.state == MOVING and z.move_target is not None:
             return replace(view, zoom_value=z.move_target)
         return view
 
@@ -390,9 +390,9 @@ class Director:
         error = aim - current
         thr = self._threshold(axis, view)
 
-        if ax.state == RUCH:
+        if ax.state == MOVING:
             if not head.moving(axis, t):
-                ax.state = SPOKOJ
+                ax.state = IDLE
             elif (ax.move_target is not None and abs(aim - ax.move_target) > thr
                   and head.progress(axis, t) >= RETARGET_PROGRESS
                   and (axis == "pan" or abs(v) < SETTLE_SPEED)):
@@ -401,9 +401,9 @@ class Director:
                 # przestrzeliwała zatrzymane wstawanie - korekta, a po niej jeszcze powrót.
                 return self._move(axis, aim, v, current)
             return []
-        if ax.state == PODAZANIE:
+        if ax.state == FOLLOWING:
             return self._follow(axis, t, est, head, aim, v)
-        if ax.state == HAMOWANIE:
+        if ax.state == BRAKING:
             if head.moving(axis, t):
                 return []
             return self._move(axis, aim, 0.0, current, force=True)
@@ -413,7 +413,7 @@ class Director:
             # więc bez tego kamera by nie ruszyła. Strona ma już własną zwłokę (side_dwell).
             return self._move(axis, aim, v, current)
         if abs(error) <= self._band(axis, view):
-            ax.state, ax.fast_since = SPOKOJ, None
+            ax.state, ax.fast_since = IDLE, None
             return []
         if (axis == "pan" and self.side.pending is not None
                 and abs(error) <= (0.5 - EDGE_MARGIN) * view.hfov):
@@ -421,23 +421,23 @@ class Director:
             # teraz celowałby w punkt, który za chwilę się zmieni - a zmiana strony wymusi
             # drugi ruch. Czekamy (najdłużej side_dwell) i jedziemy raz, do właściwego punktu.
             # Cel przy krawędzi kadru (idzie) nie czeka - utrata byłaby gorsza niż dwa ruchy.
-            if ax.state == SPOKOJ:
-                ax.state, ax.since = CZUJNY, t
+            if ax.state == IDLE:
+                ax.state, ax.since = ALERT, t
             return []
         if abs(error) <= thr:
             # Strefa środkowa: głowa osiadła poza pasmem kompozycji, ale w strefie
             # wyzwalania (np. po przemieszczeniu fotela) - strefa sama tego nie
             # skorygowałaby; cichy re-fit po REFIT_DWELL (krótsze wycieczki - gesty -
             # nie startują).
-            if ax.state == SPOKOJ:
-                ax.state, ax.since = CZUJNY, t
+            if ax.state == IDLE:
+                ax.state, ax.since = ALERT, t
             if t - ax.since >= REFIT_DWELL:
                 wait = self._settling(axis, t, error, v, view)
                 if wait != WAIT:
                     return self._move(axis, aim, v, current)
             return []
-        if ax.state == SPOKOJ:
-            ax.state, ax.since = CZUJNY, t
+        if ax.state == IDLE:
+            ax.state, ax.since = ALERT, t
         if axis == "pan" and self.profile.follow:
             direction = 1 if error > 0 else -1
             lo, hi = self.limits.bounds(axis)
@@ -450,8 +450,8 @@ class Director:
                     # Decyzja o podążaniu jeszcze zapada. Bez tego krótsza zwłoka
                     # (0,2 s w prezentacji) zawsze wygrywałaby ruchem absolutnym.
                     return []
-                ax.state, ax.direction = PODAZANIE, direction
-                self._note = "podążam za celem"
+                ax.state, ax.direction = FOLLOWING, direction
+                self._note = msg("director.note.following")
                 return [Command("vel", axis, direction)]
             ax.fast_since = None
         if t - ax.since >= self.profile.dwell:
@@ -487,7 +487,7 @@ class Director:
         if t - ax.settle_since >= SETTLE_MAX_WAIT:
             ax.settle_since = None
             return GO
-        self._note = f"czekam, aż cel stanie ({axis})"
+        self._note = msg("director.note.waiting_settle", axis=axis)
         return WAIT
 
     def _move(self, axis: str, aim: float, v: float, current: float, force: bool = False) -> list[Command]:
@@ -503,14 +503,14 @@ class Director:
             lead = max(-reach, min(reach, lead))
         target = self.limits.clamp(axis, aim + lead)
         if not force and abs(target - current) < MIN_MOVE:
-            ax.state, ax.fast_since = SPOKOJ, None
+            ax.state, ax.fast_since = IDLE, None
             if axis == "pan":
                 self._pan_side = self.side.side
             return []
-        ax.state, ax.move_target, ax.fast_since, ax.settle_since = RUCH, target, None, None
+        ax.state, ax.move_target, ax.fast_since, ax.settle_since = MOVING, target, None, None
         if axis == "pan":
             self._pan_side = self.side.side
-        self._note = f"ruch {axis}"
+        self._note = msg("director.note.moving", axis=axis)
         return [Command("abs", axis, target)]
 
     def _track_zoom(self, t: float, est: TargetEstimate, head: HeadModel, view: View) -> list[Command]:
@@ -526,24 +526,24 @@ class Director:
         stałej odległości rozmowy wahania skali (gesty, obrót głowy) niosły stosunek przez
         próg 1,2 i bez bramki zoom pompował (13 ruchów w 2 min)."""
         ax = self._zoom_axis
-        if ax.state == RUCH:
+        if ax.state == MOVING:
             if self._zoom_moving:
                 return []
-            ax.state, ax.fwin = SPOKOJ, None
+            ax.state, ax.fwin = IDLE, None
         shot = shot_for(self.profile, est)
         goal = zoom_goal(est, shot, view) if self.auto_zoom else None
         self.last_zoom_goal = goal
         if goal is None:
-            ax.state, ax.fwin = SPOKOJ, None
+            ax.state, ax.fwin = IDLE, None
             return []
         r = abs(math.log(zoom_factor(goal) / zoom_factor(view.zoom_value)))
         if r <= math.log(ZOOM_BAND_RESET):
-            ax.state, ax.fwin = SPOKOJ, None
+            ax.state, ax.fwin = IDLE, None
             return []
-        if r > math.log(ZOOM_BAND) and ax.state == SPOKOJ:
-            ax.state, ax.since, ax.fwin = CZUJNY, t, None
+        if r > math.log(ZOOM_BAND) and ax.state == IDLE:
+            ax.state, ax.since, ax.fwin = ALERT, t, None
         # Stosunek w szczelinie (ZOOM_BAND_RESET, ZOOM_BAND]: ani resetu, ani startu licznika.
-        if ax.state == CZUJNY:
+        if ax.state == ALERT:
             win = ax.fwin if ax.fwin is not None else []
             while win and t - win[0][0] > ZOOM_DWELL:
                 win.pop(0)
@@ -552,8 +552,8 @@ class Director:
             stable = max(f for _, f in win) / min(f for _, f in win) <= ZOOM_TARGET_STABILITY
             if (t - ax.since >= ZOOM_DWELL and stable and self.side.pending is None
                     and not (head.moving("pan", t) or head.moving("tilt", t))):
-                ax.state, ax.move_target, ax.fwin = RUCH, goal, None
-                self._note = f"zoom: plan {shot.name}"
+                ax.state, ax.move_target, ax.fwin = MOVING, goal, None
+                self._note = msg("director.note.zoom_shot", shot=shot.name)
                 cmds = [Command("zoom", "zoom", goal)]
                 if ZOOM_WITH_PAN_TILT:
                     for axis in ("pan", "tilt"):
@@ -572,8 +572,8 @@ class Director:
         margin = self._follow_margin()      # decyzja zapada raz na takt - zapas na jeden takt jazdy
         at_limit = (d > 0 and rest + margin >= hi) or (d < 0 and rest - margin <= lo)
         if d * (rest - target_future) >= 0 or at_limit or v * d <= 0:
-            ax.state = HAMOWANIE
-            self._note = "hamuję"
+            ax.state = BRAKING
+            self._note = msg("director.note.braking")
             return [Command("vel", axis, 0)]
         return [Command("vel", axis, d)]
 

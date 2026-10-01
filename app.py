@@ -31,6 +31,7 @@ from eagleeye.control import ControlServer, InstanceRunning, send
 from eagleeye.detectors import gpu_status
 from eagleeye.engine import Engine, UiHooks
 from eagleeye.framing import SHOTS
+from eagleeye.i18n import render
 from eagleeye.overlay import Shape, frame_point, overlay_shapes, selection_text
 from eagleeye.profiles import PROFILES, TUNABLE, resolve
 from eagleeye.trayproc import TrayProcess
@@ -56,7 +57,7 @@ WARN = "#d29922"
 ERROR = "#f85149"
 
 SLIDER_WIDTH = 220
-PROFILE_LABELS = {"rozmowa": "rozmowa", "prezentacja": "prezentacja (eksperymentalna)"}
+PROFILE_LABELS = {"talk": "rozmowa", "presentation": "prezentacja (eksperymentalna)"}
 SHOT_LABELS = {"CU": "zbliżenie (CU)", "MCU": "bliski (MCU)", "MS": "średni (MS)"}
 OPTICS_STEP_ZOOM = 600      # krok zoomu przyciskami (~1.3x)
 OPTICS_STEP_FOCUS = 150
@@ -705,7 +706,7 @@ class CameraApp:
 
     def _on_profile_change(self, e) -> None:
         tr = self.settings["tracking"]
-        tr["profile"] = e.control.value or "rozmowa"
+        tr["profile"] = e.control.value or "talk"
         tr["overrides"] = {}
         self.shot_dd.value = resolve(tr["profile"], {}).shot    # nowy profil = jego plan
         if self.tracker:
@@ -1114,8 +1115,8 @@ class CameraApp:
                         f"tempo    : {state.fps:4.1f} Hz   ruchów: {state.moves}\n"
                         f"detektor : {state.detector}"
                     )
-                    self.track_status.value = state.message
-                    self.select_status.value = (selection_text(state)
+                    self.track_status.value = render(state.message)
+                    self.select_status.value = (render(selection_text(state))
                                                 or "kliknij osobę w podglądzie, żeby śledzić tylko ją")
                     self.auto_pick_btn.disabled = state.selection == "auto"
                     if self.track_sw.value != state.enabled:

@@ -20,7 +20,7 @@ from eagleeye.control import send  # noqa: E402
 ASSETS = ROOT / "assets"
 ICON = ASSETS / "eagleeye-tray.svg"
 ICON_PRIVACY = ASSETS / "eagleeye-tray-prywatnosc.svg"
-PROFILE_LABELS = {"rozmowa": "rozmowa", "prezentacja": "prezentacja (eksperymentalna)"}
+PROFILE_LABELS = {"talk": "rozmowa", "presentation": "prezentacja (eksperymentalna)"}
 POLL_S = 1
 
 
