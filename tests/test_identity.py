@@ -46,7 +46,7 @@ def scene(*people):
         kps[6] = (cx - 30, top + 0.2 * h, 0.9)
         kps[11] = (cx + 25, top + 0.55 * h, 0.9)
         kps[12] = (cx - 25, top + 0.55 * h, 0.9)
-        dets.append(Detection(x0, int(top), w, h, 0.9, "poza", tuple(kps)))
+        dets.append(Detection(x0, int(top), w, h, 0.9, "pose", tuple(kps)))
     return frame, dets
 
 
@@ -162,7 +162,7 @@ def test_new_person_gets_new_id() -> None:
 def test_person_without_visible_torso_still_tracks() -> None:
     pt = PersonTracker()
     frame, dets = scene((400, 100, RED))
-    bare = Detection(dets[0].x, dets[0].y, dets[0].w, dets[0].h, 0.9, "poza", None)
+    bare = Detection(dets[0].x, dets[0].y, dets[0].w, dets[0].h, 0.9, "pose", None)
     tid = pt.update([bare], frame, 0.0, to_world)[0].id
     tracks = pt.update([bare], frame, 0.1, to_world)
     assert [tr.id for tr in tracks] == [tid]

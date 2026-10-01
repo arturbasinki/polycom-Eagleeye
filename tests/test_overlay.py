@@ -40,7 +40,7 @@ def test_head_keypoints_are_drawn() -> None:
     kps[0] = (500.0, 300.0, 0.9)          # nose, at 2x scale -> (1000, 600)
     kps[5] = (520.0, 400.0, 0.9)          # shoulder - we do not draw it
     state = TrackerState(enabled=True, frame_size=(960, 540), zones=(0.0, 0.0),
-                         detections=(Detection(400, 250, 200, 280, 0.9, "poza", tuple(kps)),))
+                         detections=(Detection(400, 250, 200, 280, 0.9, "pose", tuple(kps)),))
     out = annotate(np.zeros((1080, 1920, 3), np.uint8), state)
     assert out[600, 1000].any(), "nose point"
     assert not out[800, 1040].any(), "shoulders are not head points"
@@ -56,8 +56,8 @@ def _state() -> TrackerState:
     kps[0] = (500.0, 300.0, 0.9)          # nose
     kps[5] = (520.0, 400.0, 0.9)          # shoulder - we do not draw it
     return TrackerState(enabled=True, frame_size=(960, 540), zones=(0.15, 0.12),
-                        detections=(Detection(400, 250, 200, 280, 0.9, "poza", tuple(kps)),),
-                        target=Observation(500.0, 300.0, 0.0, 0.9, "poza", (400, 250, 200, 280)))
+                        detections=(Detection(400, 250, 200, 280, 0.9, "pose", tuple(kps)),),
+                        target=Observation(500.0, 300.0, 0.0, 0.9, "pose", (400, 250, 200, 280)))
 
 
 def test_shapes_map_to_top_aligned_image() -> None:
@@ -67,7 +67,7 @@ def test_shapes_map_to_top_aligned_image() -> None:
     k = 1000 / 960
     assert abs(det.x - 400 * k) < 0.01 and abs(det.y - 250 * k) < 0.01
     assert abs(det.w - 200 * k) < 0.01 and abs(det.h - 280 * k) < 0.01
-    assert det.label == "poza 0.90"
+    assert det.label == "pose 0.90"
 
 
 def test_shapes_pillarbox_golden_grid_and_aim() -> None:

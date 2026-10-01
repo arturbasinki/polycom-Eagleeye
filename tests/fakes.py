@@ -48,7 +48,7 @@ class FakeControls:
         return [v for c, v in self.writes if c == ctrl_id]
 
     def capabilities(self) -> dict:
-        return {"driver": "atrapa", "card": "Atrapa kamery", "bus_info": "usb-atrapa",
+        return {"driver": "fake", "card": "Fake camera", "bus_info": "usb-fake",
                 "version": 0, "capabilities": 0, "device_caps": 1, "is_capture": True}
 
     def close(self) -> None:
@@ -94,8 +94,8 @@ class TwoPeople:
     description = "atrapa"
 
     def __init__(self) -> None:
-        self.left = Detection(40, 20, 50, 140, 0.9, "poza")        # the bigger one
-        self.right = Detection(200, 20, 45, 130, 0.9, "poza")
+        self.left = Detection(40, 20, 50, 140, 0.9, "pose")        # the bigger one
+        self.right = Detection(200, 20, 45, 130, 0.9, "pose")
         self.dets = [self.left, self.right]
         self.fail_observation = False
 

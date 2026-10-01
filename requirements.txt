@@ -1,8 +1,8 @@
-# Zależności aplikacji. Instalacja w środowisku wirtualnym projektu:
+# Application dependencies. Install into the project virtual environment:
 #   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 flet>=1.0.0
 opencv-python>=4.10
 numpy>=1.26
-pillow>=10              # dekodowanie MJPEG i plansze wirtualnej kamery (polskie znaki)
-onnxruntime-gpu>=1.20   # CUDA; bez GPU można zastąpić czystym onnxruntime
+pillow>=10              # MJPEG decoding and virtual-camera slates (Polish glyphs)
+onnxruntime-gpu>=1.20   # CUDA; without a GPU it can be replaced by plain onnxruntime
 nvidia-cudnn-cu13>=9.0  # biblioteki cuDNN wymagane przez CUDAExecutionProvider

@@ -61,7 +61,7 @@ def test_pose_detector_finds_person_with_head_keypoints() -> None:
     print(f"    backend: {det.backend}, people: {len(dets)}")
     assert dets, "no person detected in messi5.jpg"
     best = max(dets, key=lambda d: d.score)
-    assert best.label == "poza" and best.keypoints is not None and len(best.keypoints) == 17
+    assert best.label == "pose" and best.keypoints is not None and len(best.keypoints) == 17
     head = [(x, y) for x, y, c in best.keypoints[:5] if c > 0.3]
     print(f"      visible head points: {[(round(x), round(y)) for x, y in head]}")
     assert len(head) >= 2, "too few visible head points"

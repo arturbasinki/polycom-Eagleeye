@@ -72,7 +72,7 @@ def test_jpeg_colors_match_bgr_reference() -> None:
 
 
 def test_garbage_jpeg_is_none() -> None:
-    assert jpeg_to_i420(b"to nie jest jpeg") is None
+    assert jpeg_to_i420(b"this is not jpeg") is None
 
 
 def test_card_renders_text_with_polish_letters() -> None:

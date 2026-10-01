@@ -76,7 +76,7 @@ def test_crashing_process_is_restarted_once() -> None:
 
 
 def test_missing_interpreter_is_not_fatal() -> None:
-    p = TrayProcess(argv=["/nie/ma/takiego/pythona"])
+    p = TrayProcess(argv=["/no/such/python"])
     assert p.start() is False and not p.alive
 
 

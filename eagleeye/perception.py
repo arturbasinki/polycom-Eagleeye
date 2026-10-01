@@ -28,7 +28,7 @@ class Observation:
     y: float
     t: float                          # frame capture time (CLOCK_MONOTONIC)
     score: float
-    source: str                       # "poza"
+    source: str                       # "pose"
     box: tuple[int, int, int, int]
     yaw: float | None = None          # face direction: + nose to the right in the image (framing)
     head_scale_px: float | None = None  # eye→shoulder segment in frame pixels

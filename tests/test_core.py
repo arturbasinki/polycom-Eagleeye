@@ -25,7 +25,7 @@ DYN = Dynamics(zoom_latency=0.1, zoom_base=0.3, zoom_speed=2000.0)
 
 
 def obs(t: float, scale: float | None = 60.0, yaw: float | None = 0.0) -> Observation:
-    return Observation(480.0, 206.0, t, 0.9, "poza", (0, 0, 10, 10), yaw=yaw, head_scale_px=scale)
+    return Observation(480.0, 206.0, t, 0.9, "pose", (0, 0, 10, 10), yaw=yaw, head_scale_px=scale)
 
 
 def core() -> TrackingCore:

@@ -100,7 +100,7 @@ class PoseDetector:
     overlap - we add our own, as in rtmlib.
     """
 
-    name = "poza"
+    name = "pose"
     input_size = 640
 
     def __init__(self, prefer_gpu: bool = True, score_threshold: float = 0.5,

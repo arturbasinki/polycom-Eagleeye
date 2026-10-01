@@ -352,7 +352,7 @@ def test_identity_is_frozen_while_the_zoom_is_moving() -> None:
         assert _wait_until(lambda: tr.state.selection == "selected")
         tr.core.actuator.zoom_model.moving = lambda t: True
         time.sleep(0.2)
-        fake.dets = [fake.left, fake.right, Detection(120, 30, 40, 120, 0.9, "poza")]
+        fake.dets = [fake.left, fake.right, Detection(120, 30, 40, 120, 0.9, "pose")]
         time.sleep(0.4)
         assert len(tr.state.tracks) == 2, "the third person gets no number while the zoom is moving"
         assert tr.state.target is None or tr.state.target.box == fake.right.as_box()

@@ -31,14 +31,14 @@ def person(x: int, y: int, w: int, h: int, head: dict[int, tuple[float, float]],
         kps[i] = (px, py, 0.9)
     kps[5] = (x + w * 0.7, y + h * 0.25, 0.9)      # shoulders - they are not head points
     kps[6] = (x + w * 0.3, y + h * 0.25, 0.9)
-    return Detection(x, y, w, h, score, "poza", tuple(kps))
+    return Detection(x, y, w, h, score, "pose", tuple(kps))
 
 
 FRONTAL = person(300, 80, 200, 460, {0: (400, 150), 1: (410, 140), 2: (390, 140), 3: (425, 145), 4: (375, 145)})
 
 
 class FakePose:
-    name = "poza"
+    name = "pose"
     backend = "atrapa"
 
     def __init__(self, dets: list[Detection]) -> None:
@@ -89,7 +89,7 @@ def test_previous_position_keeps_the_same_person() -> None:
 def test_observe_returns_head_of_target_and_all_detections() -> None:
     p = Perception(FakePose([FRONTAL]))
     obs, dets = p.observe(FRAME, t=12.5, previous=None)
-    assert (obs.x, obs.y, obs.t, obs.source) == (400.0, 144.0, 12.5, "poza")
+    assert (obs.x, obs.y, obs.t, obs.source) == (400.0, 144.0, 12.5, "pose")
     assert dets == [FRONTAL] and p.last_ms == 2.5 and "atrapa" in p.description
 
 
@@ -149,7 +149,7 @@ def test_head_scale_without_shoulders_is_none() -> None:
     # Without shoulders - None; the filter keeps the last scale (test_missing_..._keep_previous).
     kps = list(FRONTAL.keypoints)
     kps[5] = kps[6] = HIDDEN
-    det = Detection(300, 80, 200, 460, 0.9, "poza", tuple(kps))
+    det = Detection(300, 80, 200, 460, 0.9, "pose", tuple(kps))
     assert head_scale_px(det) is None
 
 
@@ -161,7 +161,7 @@ def test_head_scale_without_eyes_is_none() -> None:
 def test_observation_from_a_chosen_detection() -> None:
     """Person pointed at by a click: the same observation as from pick(), only from the chosen detection."""
     obs = Perception(FakePose([])).observation(FRONTAL, 3.5)
-    assert (obs.x, obs.y, obs.t, obs.source, obs.box) == (400.0, 144.0, 3.5, "poza", FRONTAL.as_box())
+    assert (obs.x, obs.y, obs.t, obs.source, obs.box) == (400.0, 144.0, 3.5, "pose", FRONTAL.as_box())
     assert abs(obs.yaw) < 0.05 and abs(obs.head_scale_px - 55.0) < 1e-6
 
 
