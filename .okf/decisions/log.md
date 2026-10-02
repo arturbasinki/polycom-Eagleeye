@@ -1,6 +1,9 @@
 # Directory Update Log
 
 ## 2026-10-02
+* **Update**: Changed [Qt Quick View (Proposed, Future)](/decisions/qt-quick-view-future.md).
+* **Update**: Changed [Single Process with a Tray Lifecycle](/decisions/single-process-tray-lifecycle.md).
+* **Update**: Changed [Decode Once to YUV Planes](/decisions/decode-once-to-yuv-planes.md).
 * **Update**: Changed [Decode MJPEG with Pillow](/decisions/pillow-over-opencv-decoding.md).
 * **Creation**: Added [Decode Once to YUV Planes](/decisions/decode-once-to-yuv-planes.md).
 * **Creation**: Added [Qt Quick View (Proposed, Future)](/decisions/qt-quick-view-future.md).

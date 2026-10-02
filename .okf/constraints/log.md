@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-10-02
+* **Update**: Changed [No Host-Controllable Exposure](/constraints/no-host-exposure-control.md).
 * **Update**: Changed [v4l2loopback exclusive_caps](/constraints/v4l2loopback-exclusive-caps.md).
 * **Creation**: Added [Camera Control Values Do Not Persist](/constraints/control-values-not-persisted.md).
 * **Creation**: Added [Camera Needs External Power](/constraints/camera-power.md).

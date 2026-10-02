@@ -63,10 +63,21 @@ true in OpenCV 5.0).
 - The image is unchanged: same luma, the camera's own chroma; no resolution, frame rate or JPEG quality
   is touched — see [Full Quality, Waste Removed](/quality/full-quality-no-waste.md).
 - Supersedes [Decode MJPEG with Pillow](/decisions/pillow-over-opencv-decoding.md) for the per-frame path.
-- The live per-thread CPU after the change was not measured in the authoring session (the agent's sandbox
-  exposes neither the GPU nor the camera, and `libturbojpeg0` was not installed system-wide). Expected
-  from the measurements above: `vcam` ≈ 13–15 %, `tracker` ≈ 15–20 %, `loop_ms` ≈ 10–13. Re-measure on
-  the machine once `libturbojpeg0` is installed.
+- **Measured live on 2026-10-02** (same machine and session, 1920×1080 MJPEG at 30 fps, tracking on,
+  profile `talk`, window visible, `libturbojpeg.so.0` loaded; `top -H` over 10 s, before → after):
+
+  | | Before | After |
+  |---|---|---|
+  | `vcam` thread | 24.1 % | **9.4 %** |
+  | `tracker` thread | 30.5 % | **13.9 %** |
+  | `loop_ms` | 22–30 | **10–16** |
+  | `detection_ms` | 11–15 | 8–12 (one 18.9 right after start) |
+  | Loop rate | 14.7–14.9 Hz | 14.9–15.6 Hz |
+
+  The engine's two hot threads went from ~55 % to ~23 % of one core. The virtual camera's frame read
+  back from `/dev/video10` is 1920×1080 with natural colours. The Flet window process is unchanged
+  (~210 % across its threads while visible) — the next step is the
+  [Qt Quick View](/decisions/qt-quick-view-future.md), not the engine.
 
 # Citations
 - [eagleeye/jpeg.py](/eagleeye/jpeg.py)

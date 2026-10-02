@@ -45,6 +45,12 @@ Same features and i18n; preview at the full Resolution and the camera's fps
 ([Full Quality, Waste Removed](/quality/full-quality-no-waste.md)); UI-thread CPU at 125 % scaling,
 window maximised, measured against the Flet baseline.
 
+## Additional motivation: robustness
+
+On 2026-10-02 the Flet client crashed (`eglMakeCurrent failed`) and, since the window shares the engine's
+process, the whole app — virtual camera included — exited with it. A replacement view should not be able
+to take the call image down: either a sturdier renderer or an out-of-process window.
+
 # Citations
 - [app.py](/app.py)
 - [docs/superpowers/plans/2026-10-02-cpu-waste-removal.md](/docs/superpowers/plans/2026-10-02-cpu-waste-removal.md)

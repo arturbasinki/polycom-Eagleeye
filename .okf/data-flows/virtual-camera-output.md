@@ -45,6 +45,13 @@ Measured 2026-10-02 at 1920×1080: ~10 ms of CPU per frame, ~8.5 ms of it the JP
 of one core at 30 fps. It is now decoded once, straight to planes, with TurboJPEG (~4 ms per frame), and
 shared with the tracker: see [Decode Once to YUV Planes](/decisions/decode-once-to-yuv-planes.md).
 
+## Open question: format negotiation with a running reader
+
+The placeholder service writes its slate at **1280×720**. When the app restarts or the Resolution
+changes while a browser keeps reading the device, the reader may have negotiated that smaller format.
+Not verified (2026-10-02): no reader was active when it could be measured. If a call shows a smaller
+image after a restart, re-selecting the camera in the call is the first check.
+
 # Citations
 - [eagleeye/vcam.py](/eagleeye/vcam.py)
 - [eagleeye/engine.py](/eagleeye/engine.py)

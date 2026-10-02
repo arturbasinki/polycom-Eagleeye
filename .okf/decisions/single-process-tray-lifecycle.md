@@ -30,6 +30,14 @@ which could have justified a daemon, but the target user is one person on their 
 - Starting on demand when a client opens `/dev/video10` (v2l2loopback does not announce a new reader).
 - A separate daemon with inter-process communication (unnecessary complexity for one machine).
 
+## Known risk
+
+Because the window runs in the engine's process, a crash of the window takes the call image down with it.
+Observed 2026-10-02: the Flet client lost its GL context (`eglMakeCurrent failed`), the Flet session
+ended, the process exited, and the [placeholder service](/workflows/install.md) took over the virtual
+camera with its slate until the app was started again. Moving the window out of process, or to a sturdier
+toolkit ([Qt Quick View](/decisions/qt-quick-view-future.md)), would contain such a crash.
+
 # Citations
 - [docs/superpowers/specs/2026-09-22-tracking-engine-design.md](/docs/superpowers/specs/2026-09-22-tracking-engine-design.md)
 - [eagleeye/trayproc.py](/eagleeye/trayproc.py)
