@@ -189,6 +189,7 @@ class CameraApp:
                                         resize_interval=100, on_resize=self._on_overlay_resize)
         self._overlay_size = (0.0, 0.0)
         self._overlay_drawn: tuple | None = None     # (tracker state, size) drawn last
+        self._fitted: tuple | None = None            # (area, frame size) the preview image box was fitted for
         self.preview_badge = ft.Text("", color=TEXT, size=12, font_family="monospace")
         self.preview_stack = ft.Stack(
             expand=True,
@@ -834,6 +835,7 @@ class CameraApp:
         self._privacy_shown = False          # the privacy card is re-rendered in the new language
         self._shown = None                   # force _sync_connection to repaint the connection card
         self._overlay_drawn = None           # force the overlay to be redrawn after the rebuild
+        self._fitted = None                  # the rebuilt image control has no size yet
         self._last_jpg = None                # no stale frame belongs to the rebuilt preview
         self._sync_connection()
         self._refresh_widgets()
@@ -1111,6 +1113,7 @@ class CameraApp:
                 live = self.engine.vcam.live_frame()
                 if live is not None:
                     shown = await asyncio.to_thread(i420_to_jpeg, live, self.engine.vcam.size) or jpg
+            self._fit_preview()                # the frame size can change with the "Resolution" setting
             self.preview.src = shown
             self.preview.visible = True
             self.preview_placeholder.visible = False
@@ -1144,6 +1147,26 @@ class CameraApp:
 
     def _on_overlay_resize(self, e) -> None:
         self._overlay_size = (e.width, e.height)
+        self._fit_preview()
+
+    def _fit_preview(self) -> None:
+        """Size the image box like the overlay assumes: the frame fitted into the overlay area (contain),
+        top-aligned and centred horizontally (``align=TOP_CENTER``). Flutter never scales a picture up
+        beyond its natural size and centres it when the box is taller, so without an explicit box a
+        640x360 or 960x540 preview came out small or off-centre and the overlay drifted away from it."""
+        area_w, area_h = self._overlay_size
+        stream = self.stream
+        if area_w <= 0 or area_h <= 0 or stream is None:
+            return
+        frame_w, frame_h = stream.actual_width, stream.actual_height
+        if frame_w <= 0 or frame_h <= 0:
+            return
+        key = (round(area_w), round(area_h), frame_w, frame_h)
+        if key == self._fitted:
+            return                      # called for every frame: write (and send) a size only when it changed
+        self._fitted = key
+        scale = min(area_w / frame_w, area_h / frame_h)
+        self.preview.width, self.preview.height = round(frame_w * scale), round(frame_h * scale)
 
     def _sync_overlay(self) -> bool:
         """Sets the overlay shapes; ``True`` when they changed and need to be sent."""
