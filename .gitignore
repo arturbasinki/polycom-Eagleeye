@@ -12,6 +12,8 @@ models/testdata/
 # Dot files and directories (tools, agents, editors) - except .gitignore itself
 .*
 !.gitignore
+# Keep the OKF knowledge bundle (the project's language-agnostic source of truth)
+!.okf/
 
 # Working documentation (plans and specs) - not needed to run the app
 docs/
