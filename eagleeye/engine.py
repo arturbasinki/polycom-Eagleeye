@@ -161,8 +161,10 @@ class Engine:
         )
 
     def open_camera(self) -> Message | None:
-        """(Re)opens the camera. Returns an error message or None."""
+        """(Re)opens the camera. Returns an error message or None. Tracking that was on stays on:
+        the new tracker starts switched off, so a "Resolution" change used to turn it off."""
         with self._lock:
+            was_tracking = self.tracker is not None and self.tracker.enabled
             self.close_camera()
             device = self.settings["device"]
             try:
@@ -187,6 +189,8 @@ class Engine:
             self.tracker = self._tracker_factory(self.stream, self.controls, self.tracker_settings())
             self.tracker.start()
             self.vcam.set_source(self.stream)
+            if was_tracking and not self.privacy.active:       # privacy resumes tracking itself when it ends
+                self.tracker.set_enabled(True)
             self.error, self._busy = None, False
             log.info("camera connected: %s (%s)", self.caps["card"], self.caps["bus_info"])
             return None

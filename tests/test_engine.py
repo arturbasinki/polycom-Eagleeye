@@ -544,5 +544,40 @@ def test_a_failure_keeps_an_existing_table() -> None:
         engine.shutdown()
 
 
+def test_reopening_the_camera_keeps_tracking_on() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    try:
+        engine.set_tracking(True)
+        assert engine.open_camera() is None              # what a "Resolution" change does
+        assert engine.tracker is not None and engine.tracker.enabled
+    finally:
+        engine.shutdown()
+
+
+def test_reopening_the_camera_keeps_tracking_off_when_it_was_off() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    try:
+        assert engine.open_camera() is None
+        assert engine.tracker is not None and not engine.tracker.enabled
+    finally:
+        engine.shutdown()
+
+
+def test_reopening_the_camera_during_privacy_does_not_start_tracking() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    try:
+        engine.set_tracking(True)
+        engine.set_privacy(True)
+        assert engine.open_camera() is None
+        assert not engine.tracker.enabled                # privacy brings it back when it ends
+        engine.set_privacy(False)
+        assert engine.tracker.enabled
+    finally:
+        engine.shutdown()
+
+
 if __name__ == "__main__":
     run(globals(), "Engine")
