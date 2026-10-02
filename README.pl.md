@@ -147,8 +147,8 @@ cd polycom-Eagleeye
 Instalator (bezpieczny do ponownego uruchomienia; `./install.sh --dry-run` pokazuje kroki
 bez wykonywania):
 
-1. doinstalowuje `v4l2loopback-dkms`, `gir1.2-ayatanaappindicator3-0.1`, `python3-venv`
-   (jedyne miejsce, gdzie prosi o hasło sudo),
+1. doinstalowuje `v4l2loopback-dkms`, `gir1.2-ayatanaappindicator3-0.1`, `python3-venv` i
+   `libturbojpeg0` (jedyne miejsce, gdzie prosi o hasło sudo),
 2. konfiguruje wirtualną kamerę „EagleEye” (`/dev/video10`),
 3. tworzy środowisko Pythona (z CUDA, gdy jest karta NVIDIA),
 4. pobiera model pozy RTMO-s,
@@ -379,14 +379,13 @@ Kluczowe decyzje projektowe:
 * **Detekcja idzie przez GPU (CUDA).** Bez CUDA model pozy schodzi na CPU
   automatycznie (62 ms na klatkę zamiast 7,8 ms) — śledzenie działa dalej,
   tylko wolniej (~13–14 Hz).
-* **Dekodowanie ramek idzie przez Pillow, nie przez OpenCV.** Kamera dokłada kilka
-  bajtów dopełnienia przed znacznikiem EOI, a libjpeg w OpenCV wypisuje wtedy
-  `Corrupt JPEG data: N extraneous bytes` **na stderr przy każdej klatce**
-  (kilkadziesiąt linii na sekundę — poziomów logowania OpenCV to nie tłumi, bo
-  komunikat idzie wprost z libjpeg). Pillow zgłasza to jako ostrzeżenie Pythona,
-  które da się wyciszyć. Koszt to ~8 ms na klatkę 720p zamiast ~5 ms, a wynik jest
-  identyczny co do bajtu. Dodatkowo podgląd dekoduje obraz tylko wtedy, gdy ma co
-  rysować — przy braku wykryć bajty JPEG lecą do kontrolki wprost.
+* **Ramki są dekodowane przez TurboJPEG wprost do płaszczyzn Y/Cb/Cr** (`libturbojpeg0`),
+  raz na klatkę dla wirtualnej kamery i trackera: ~4 ms na klatkę 1080p. Nie przez OpenCV:
+  kamera dokłada kilka bajtów dopełnienia przed znacznikiem EOI, a libjpeg w OpenCV
+  wypisuje wtedy `Corrupt JPEG data` **na stderr przy każdej klatce**. Bez `libturbojpeg0`
+  aplikacja schodzi na Pillow (identyczna luminancja, około dwa razy więcej CPU) i mówi o tym
+  w logu. Dodatkowo podgląd dekoduje obraz tylko wtedy, gdy ma co rysować — przy braku
+  wykryć bajty JPEG lecą do kontrolki wprost.
 * **Port RJ45 nie ma funkcji na Linuksie.** Nie ma go nawet w dokumentacji
   producenta („I/O: USB 2.0") — służył do celów serwisowych.
 * **Ustawienia kontrolek nie są trwałe w kamerze.** Po odłączeniu wracają do

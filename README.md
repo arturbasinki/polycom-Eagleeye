@@ -157,8 +157,8 @@ cd polycom-Eagleeye
 
 The installer is safe to run repeatedly. It:
 
-1. installs `v4l2loopback-dkms`, `gir1.2-ayatanaappindicator3-0.1` and `python3-venv`
-   (the only step that asks for `sudo`),
+1. installs `v4l2loopback-dkms`, `gir1.2-ayatanaappindicator3-0.1`, `python3-venv` and
+   `libturbojpeg0` (the only step that asks for `sudo`),
 2. sets up the virtual camera "EagleEye" (`/dev/video10`),
 3. creates a Python virtualenv (CUDA build when an NVIDIA card is present),
 4. downloads the RTMO-s pose model (about 36 MB, from OpenMMLab),
@@ -339,10 +339,11 @@ Design decisions worth knowing:
 
 - Detection runs on the GPU (CUDA). Without it the model falls back to the CPU
   automatically; tracking keeps working at about 13–14 Hz.
-- Frame decoding uses Pillow instead of OpenCV: the camera adds a few padding bytes before
-  the JPEG EOI marker, and OpenCV's libjpeg prints `Corrupt JPEG data` to stderr on every
-  frame. Pillow reports it as a silenceable Python warning (~8 ms vs ~5 ms per 720p frame,
-  byte-identical output).
+- Frames are decoded with TurboJPEG straight to Y/Cb/Cr planes (`libturbojpeg0`), once per
+  frame for both the virtual camera and the tracker: ~4 ms per 1080p frame. Not OpenCV: the
+  camera pads each frame before the JPEG EOI marker and OpenCV's libjpeg prints
+  `Corrupt JPEG data` to stderr on every frame. Without `libturbojpeg0` the app falls back to
+  Pillow (same luma, about twice the CPU) and says so in the log.
 - The RJ45 port does nothing on Linux (it was for service use).
 - Camera control settings do not persist in the device; only presets in `config.json` do.
 - Firmware cannot be updated from Linux.

@@ -19,7 +19,7 @@ MODEL_URL="https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-
 MODPROBE_CONF=/etc/modprobe.d/eagleeye.conf
 MODULES_CONF=/etc/modules-load.d/eagleeye.conf
 MODPROBE_LINE='options v4l2loopback devices=1 video_nr=10 card_label="EagleEye" exclusive_caps=1'
-PACKAGES=(v4l2loopback-dkms gir1.2-ayatanaappindicator3-0.1 python3-venv)
+PACKAGES=(v4l2loopback-dkms gir1.2-ayatanaappindicator3-0.1 python3-venv libturbojpeg0)
 SHORTCUT_BINDING='<Shift><Super>c'
 SHORTCUT_PATH=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/eagleeye-privacy/
 MEDIA_KEYS=org.gnome.settings-daemon.plugins.media-keys

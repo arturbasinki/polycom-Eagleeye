@@ -1,19 +1,17 @@
 """Virtual camera "EagleEye": the application's image as a camera for Meet, Teams and OBS.
 
 The device comes from the v4l2loopback module (installer: card_label="EagleEye",
-exclusive_caps=1). We write raw I420 (YU12) 1280x720 frames at a steady
-30 fps - receivers see an even stream regardless of camera pauses.
+exclusive_caps=1). We write raw I420 (YU12) frames at the camera's size (the "Resolution"
+setting) at a steady 30 fps - receivers see an even stream regardless of camera pauses.
 When there is no image (privacy, camera disconnected), we write a slate.
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import math
 import threading
 import time
-import warnings
 from pathlib import Path
 from typing import Callable
 
@@ -22,6 +20,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .i18n import msg, t
+from .jpeg import decode_yuv420
 from .v4l2 import OutputDevice, V4L2Error, find_device_by_card
 
 log = logging.getLogger("eagleeye")
@@ -61,33 +60,27 @@ def bgr_to_i420(bgr: np.ndarray) -> bytes:
     return b"".join((y.tobytes(), u.tobytes(), v.tobytes()))
 
 
-def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE,
-                 lut: np.ndarray | None = None) -> bytes | None:
-    """MJPEG frame -> I420 without going through RGB.
-
-    JPEG stores the image as full-range YCbCr (JFIF), which is exactly
-    what the output wants - so we decode straight to YCbCr instead of
-    YCbCr -> RGB -> YUV. Measured on a 1080p frame: 26 ms CPU instead of 67 ms.
-    Pillow, not ``cv2.imdecode`` - the reason is in :func:`decode_mjpeg`.
-    ``lut`` is an optional 256-entry table applied to the luma plane (light correction).
-    """
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with Image.open(io.BytesIO(jpg)) as image:
-                image.draft("YCbCr", image.size)
-                ycc = np.asarray(image if image.mode == "YCbCr" else image.convert("YCbCr"))
-    except Exception:
-        return None
+def planes_to_i420(y: np.ndarray, u: np.ndarray, v: np.ndarray, size: tuple[int, int],
+                   lut: np.ndarray | None = None) -> bytes:
+    """4:2:0 planes -> one I420 frame of ``size``. ``lut`` is an optional 256-entry table for
+    the luma plane (light correction). Inputs are never modified - they may be shared."""
     w, h = size
-    if (ycc.shape[1], ycc.shape[0]) != (w, h):
-        ycc = cv2.resize(ycc, (w, h), interpolation=cv2.INTER_AREA)
-    y, u, v = cv2.split(ycc)
+    if y.shape != (h, w):
+        y = cv2.resize(y, (w, h), interpolation=cv2.INTER_AREA)
+    if u.shape != (h // 2, w // 2):
+        u = cv2.resize(u, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+        v = cv2.resize(v, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
     if lut is not None:
         y = cv2.LUT(y, lut)
-    u = cv2.resize(u, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
-    v = cv2.resize(v, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
     return b"".join((y.tobytes(), u.tobytes(), v.tobytes()))
+
+
+def jpeg_to_i420(jpg: bytes, size: tuple[int, int] = OUT_SIZE,
+                 lut: np.ndarray | None = None) -> bytes | None:
+    """MJPEG frame -> I420 without going through RGB: the JPEG's own Y, Cb and Cr planes
+    (see :mod:`eagleeye.jpeg`), resized only when the output size differs."""
+    planes = decode_yuv420(jpg)
+    return None if planes is None else planes_to_i420(*planes, size, lut)
 
 
 def i420_to_jpeg(data: bytes, size: tuple[int, int] = OUT_SIZE, quality: int = 85) -> bytes | None:
