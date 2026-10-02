@@ -8,11 +8,13 @@ them moved the target by 9-13°, so they were replaced (2026-09-23).
 
 from __future__ import annotations
 
+import ctypes
 import io
 import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -89,6 +91,30 @@ def decode_mjpeg_scaled(jpg: bytes, reduce: int = 2) -> np.ndarray | None:
         return None
 
 
+CU_CTX_SCHED_BLOCKING_SYNC = 0x04
+
+
+def set_cuda_blocking_sync(load: Callable[[str], object] = ctypes.CDLL) -> bool:
+    """Make the CPU sleep, not spin, while it waits for the GPU.
+
+    CUDA's default scheduling spin-waits when a context has fewer active threads than there
+    are CPU cores, so every ``session.run`` on the GPU cost as much CPU time as wall time
+    (9.5 ms of 9.5 ms on the RTX 3060 Ti, measured 2026-10-02). With blocking sync: 5.3 ms
+    CPU for +0.3-1 ms latency, which the 15 Hz loop does not notice.
+    The driver API, not the runtime: one ``libcuda.so.1`` serves every ``libcudart`` copy,
+    and the flag lives on the device's primary context, which ONNX Runtime uses. It may be
+    set before or after that context exists. Best effort: False without a driver or GPU.
+    """
+    try:
+        cuda = load("libcuda.so.1")
+        dev = ctypes.c_int()
+        return (cuda.cuInit(0) == 0
+                and cuda.cuDeviceGet(ctypes.byref(dev), 0) == 0
+                and cuda.cuDevicePrimaryCtxSetFlags_v2(dev, CU_CTX_SCHED_BLOCKING_SYNC) == 0)
+    except (OSError, AttributeError):
+        return False
+
+
 class PoseDetector:
     """Person pose (RTMO-s) - nose, eyes, ears, shoulders... keypoints for each person.
 
@@ -115,6 +141,7 @@ class PoseDetector:
         opts.log_severity_level = 3
         providers = (["CUDAExecutionProvider", "CPUExecutionProvider"] if prefer_gpu
                      else ["CPUExecutionProvider"])
+        self.cuda_blocking_sync = set_cuda_blocking_sync() if prefer_gpu else False
         self._session = ort.InferenceSession(str(RTMO_MODEL), sess_options=opts, providers=providers)
         self._input = self._session.get_inputs()[0].name
         active = self._session.get_providers()

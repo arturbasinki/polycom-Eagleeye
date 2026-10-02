@@ -23,7 +23,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from eagleeye.detectors import RTMO_MODEL, PoseDetector, decode_mjpeg, gpu_status  # noqa: E402
+from eagleeye.detectors import (RTMO_MODEL, PoseDetector, decode_mjpeg, gpu_status,  # noqa: E402
+                                  set_cuda_blocking_sync)
 
 TESTDATA = ROOT / "models" / "testdata"
 SAMPLES = "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data"
@@ -101,6 +102,44 @@ def test_gpu_status_reports_device() -> None:
     print(f"    {status}")
     if status["available"]:
         assert status["device"], "GPU advertised as available but with no device name"
+
+
+class FakeCuda:
+    """Records driver calls instead of touching a GPU."""
+
+    def __init__(self, init_rc: int = 0) -> None:
+        self.init_rc = init_rc
+        self.calls: list[tuple[str, int]] = []
+
+    def cuInit(self, flags: int) -> int:
+        self.calls.append(("cuInit", flags))
+        return self.init_rc
+
+    def cuDeviceGet(self, dev_ref, ordinal: int) -> int:
+        self.calls.append(("cuDeviceGet", ordinal))
+        return 0
+
+    def cuDevicePrimaryCtxSetFlags_v2(self, dev, flags: int) -> int:
+        self.calls.append(("setFlags", flags))
+        return 0
+
+
+def test_cuda_blocking_sync_sets_the_primary_context_flag() -> None:
+    cuda = FakeCuda()
+    assert set_cuda_blocking_sync(lambda name: cuda) is True
+    assert ("setFlags", 4) in cuda.calls        # CU_CTX_SCHED_BLOCKING_SYNC
+
+
+def test_cuda_blocking_sync_without_driver_is_harmless() -> None:
+    def missing(name):
+        raise OSError(f"{name}: cannot open shared object file")
+    assert set_cuda_blocking_sync(missing) is False
+
+
+def test_cuda_blocking_sync_skips_flags_when_init_fails() -> None:
+    cuda = FakeCuda(init_rc=100)                 # CUDA_ERROR_NO_DEVICE
+    assert set_cuda_blocking_sync(lambda name: cuda) is False
+    assert not any(name == "setFlags" for name, _ in cuda.calls)
 
 
 if __name__ == "__main__":
