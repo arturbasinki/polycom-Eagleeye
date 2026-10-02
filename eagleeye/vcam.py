@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from .frames import FrameDecoder
 from .i18n import msg, t
 from .jpeg import decode_yuv420
 from .v4l2 import OutputDevice, V4L2Error, find_device_by_card
@@ -151,7 +152,9 @@ class VirtualCamera:
 
     def __init__(self, device_factory: Callable[[], OutputDevice | None] | None = None,
                  size: tuple[int, int] = OUT_SIZE, fps: float = OUT_FPS,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic,
+                 frames: FrameDecoder | None = None) -> None:
+        self.frames = frames if frames is not None else FrameDecoder()
         self._factory = device_factory or (lambda: open_loopback(CARD_LABEL, self.size))
         self.size = (int(size[0]), int(size[1]))
         self._resize_pending = False
@@ -225,8 +228,9 @@ class VirtualCamera:
             if source is not None:
                 frame_id, jpg, _ = source.frame_timed(self._last_id, timeout=0.0)
                 if jpg is not None and frame_id != self._last_id:
-                    data = jpeg_to_i420(jpg, self.size, self._tone)
-                    if data is not None:
+                    frame = self.frames.get(source, frame_id, jpg)
+                    if frame is not None:
+                        data = planes_to_i420(frame.y, frame.u, frame.v, self.size, self._tone)
                         self._last_id, self._live, self._live_at = frame_id, data, self._clock()
             live, live_at = self._live, self._live_at
         if live is None or self._clock() - live_at > self.STALE_S:

@@ -23,8 +23,9 @@ from pathlib import Path
 
 from .config import captures_dir
 from .core import TrackingCore
-from .detectors import Detection, decode_mjpeg_scaled
+from .detectors import Detection
 from .director import Command
+from .frames import FrameDecoder
 from .framing import GOLDEN, SIDE_X, shot_for
 from .head_model import Dynamics
 from .i18n import Message, msg
@@ -131,8 +132,9 @@ def load_session(path: Path) -> list[dict]:
 
 class Tracker:
     def __init__(self, stream, controls, settings: TrackerSettings,
-                 perception_factory=default_perception) -> None:
+                 perception_factory=default_perception, frames: FrameDecoder | None = None) -> None:
         self.stream = stream
+        self.frames = frames if frames is not None else FrameDecoder()
         self.controls = controls
         self.settings = settings
         self._factory = perception_factory
@@ -432,9 +434,10 @@ class Tracker:
                 self._publish(detections=(), target=None, tracks=())
                 time.sleep(0.05)
                 continue
-            frame = decode_mjpeg_scaled(jpg, 2)
-            if frame is None:
+            yuv = self.frames.get(self.stream, fid, jpg)      # usually already decoded by the virtual camera
+            if yuv is None:
                 continue
+            frame = yuv.bgr_half()
             h, w = frame.shape[:2]
             obs, dets, det_ms = self._perceive(frame, ts)
             try:

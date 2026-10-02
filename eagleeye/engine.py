@@ -186,7 +186,8 @@ class Engine:
                 if isinstance(exc, OSError) and exc.errno == errno.EBUSY:
                     return self._fail_busy(device)
                 return self._fail(msg("engine.error.stream_failed", error=str(exc)))
-            self.tracker = self._tracker_factory(self.stream, self.controls, self.tracker_settings())
+            self.tracker = self._tracker_factory(self.stream, self.controls, self.tracker_settings(),
+                                                 frames=self.vcam.frames)
             self.tracker.start()
             self.vcam.set_source(self.stream)
             if was_tracking and not self.privacy.active:       # privacy resumes tracking itself when it ends

@@ -24,6 +24,7 @@ from runner import run  # noqa: E402
 from eagleeye import i18n  # noqa: E402
 from eagleeye.config import Store  # noqa: E402
 from eagleeye.engine import Engine, UiHooks  # noqa: E402
+from eagleeye.frames import FrameDecoder  # noqa: E402
 from eagleeye.i18n import LocalizedError, msg, render  # noqa: E402
 from eagleeye.tracker import Tracker  # noqa: E402
 from eagleeye.v4l2 import CID_TILT_ABSOLUTE  # noqa: E402
@@ -39,6 +40,7 @@ class NoPerson:
 
 class FakeVcam:
     def __init__(self) -> None:
+        self.frames = FrameDecoder()
         self.source = None
         self.privacy = False
         self.status = msg("vcam.status.running")
@@ -71,7 +73,7 @@ def make_engine(controls_factory=None, stream_factory=FakeCameraStream, percepti
     ctl = FakeControls()
     engine = Engine(Store(path), stream_factory=stream_factory, **kwargs,
                     controls_factory=controls_factory or (lambda device: ctl),
-                    tracker_factory=lambda s, c, st: Tracker(s, c, st, lambda gpu: perception()),
+                    tracker_factory=lambda s, c, st, **kw: Tracker(s, c, st, lambda gpu: perception(), **kw),
                     vcam=FakeVcam())
     return engine, ctl
 
@@ -366,7 +368,7 @@ def test_legacy_profile_value_falls_back_to_the_default() -> None:
                     encoding="utf-8")
     engine = Engine(Store(path), stream_factory=FakeCameraStream,
                     controls_factory=lambda device: FakeControls(),
-                    tracker_factory=lambda s, c, st: Tracker(s, c, st, lambda gpu: NoPerson()),
+                    tracker_factory=lambda s, c, st, **kw: Tracker(s, c, st, lambda gpu: NoPerson(), **kw),
                     vcam=FakeVcam())
     assert engine.state()["profile"] == "talk"
     assert engine.settings["tracking"]["profile"] == "talk"
@@ -575,6 +577,15 @@ def test_reopening_the_camera_during_privacy_does_not_start_tracking() -> None:
         assert not engine.tracker.enabled                # privacy brings it back when it ends
         engine.set_privacy(False)
         assert engine.tracker.enabled
+    finally:
+        engine.shutdown()
+
+
+def test_tracker_and_virtual_camera_share_one_decoder() -> None:
+    engine, _ = make_engine()
+    engine.start()
+    try:
+        assert engine.tracker.frames is engine.vcam.frames
     finally:
         engine.shutdown()
 

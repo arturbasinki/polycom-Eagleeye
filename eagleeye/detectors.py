@@ -72,25 +72,6 @@ def decode_mjpeg(jpg: bytes) -> np.ndarray | None:
         return None
 
 
-def decode_mjpeg_scaled(jpg: bytes, reduce: int = 2) -> np.ndarray | None:
-    """Like :func:`decode_mjpeg`, but decodes straight at the ``1/reduce`` scale.
-
-    Pillow's ``draft`` makes libjpeg scale in the DCT domain, so half the work
-    is skipped. Measured on a 1080p frame from the camera: 3.9 ms instead of 11.5 ms,
-    with no libjpeg warnings (OpenCV spews them on every frame from this camera).
-    """
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with Image.open(io.BytesIO(jpg)) as image:
-                if reduce > 1:
-                    image.draft("RGB", (image.width // reduce, image.height // reduce))
-                rgb = np.asarray(image.convert("RGB"))
-        return np.ascontiguousarray(rgb[:, :, ::-1])  # RGB -> BGR
-    except Exception:
-        return None
-
-
 CU_CTX_SCHED_BLOCKING_SYNC = 0x04
 
 

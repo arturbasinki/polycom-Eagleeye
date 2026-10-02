@@ -9,14 +9,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from runner import run  # noqa: E402
 
-from eagleeye.detectors import Detection, decode_mjpeg_scaled  # noqa: E402
+from eagleeye.detectors import Detection  # noqa: E402
 from eagleeye.perception import (Perception, face_yaw, head_point,  # noqa: E402
                                  head_scale_px, pick)
 
@@ -96,17 +95,6 @@ def test_observe_returns_head_of_target_and_all_detections() -> None:
 def test_observe_without_detections_returns_none() -> None:
     obs, dets = Perception(FakePose([])).observe(FRAME, t=0.0, previous=None)
     assert obs is None and dets == []
-
-
-def test_scaled_decode_halves_the_frame() -> None:
-    img = np.random.default_rng(1).integers(0, 255, (720, 1280, 3), dtype=np.uint8)
-    ok, buf = cv2.imencode(".jpg", img)
-    assert ok
-    assert decode_mjpeg_scaled(buf.tobytes(), 2).shape == (360, 640, 3)
-
-
-def test_scaled_decode_of_garbage_is_none() -> None:
-    assert decode_mjpeg_scaled(b"not a jpeg") is None
 
 
 def test_frontal_face_has_zero_yaw() -> None:
